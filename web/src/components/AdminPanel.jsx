@@ -685,6 +685,63 @@ const AdminPanel = ({ onClose }) => {
                       style={{ padding: "8px", backgroundColor: "#1e1e1e", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", borderRadius: "6px" }}
                     />
                   </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <label style={{ fontSize: "0.75rem", color: "#888888", fontWeight: "600" }}>SUCCES SCHERM DUUR (SECONDEN)</label>
+                    <input 
+                      type="number"
+                      min="0.5"
+                      max="10.0"
+                      step="0.5"
+                      value={settings.calibration?.success_screen_duration || 2.0}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        calibration: {
+                          ...prev.calibration,
+                          success_screen_duration: parseFloat(e.target.value)
+                        }
+                      }))}
+                      style={{ padding: "8px", backgroundColor: "#1e1e1e", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", borderRadius: "6px" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <label style={{ fontSize: "0.75rem", color: "#888888", fontWeight: "600" }}>ACHTERGROND FLUISTER MIN WACHTTIJD (SEC)</label>
+                    <input 
+                      type="number"
+                      min="0.1"
+                      max="10.0"
+                      step="0.1"
+                      value={settings.calibration?.bg_whisper_min_wait || 0.5}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        calibration: {
+                          ...prev.calibration,
+                          bg_whisper_min_wait: parseFloat(e.target.value)
+                        }
+                      }))}
+                      style={{ padding: "8px", backgroundColor: "#1e1e1e", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", borderRadius: "6px" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <label style={{ fontSize: "0.75rem", color: "#888888", fontWeight: "600" }}>ACHTERGROND FLUISTER MAX WACHTTIJD (SEC)</label>
+                    <input 
+                      type="number"
+                      min="0.5"
+                      max="20.0"
+                      step="0.5"
+                      value={settings.calibration?.bg_whisper_max_wait || 3.0}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        calibration: {
+                          ...prev.calibration,
+                          bg_whisper_max_wait: parseFloat(e.target.value)
+                        }
+                      }))}
+                      style={{ padding: "8px", backgroundColor: "#1e1e1e", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", borderRadius: "6px" }}
+                    />
+                  </div>
                 </div>
 
                 <button type="submit" className="btn-premium" style={{ alignSelf: "flex-end" }}>

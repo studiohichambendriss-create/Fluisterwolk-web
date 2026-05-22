@@ -293,7 +293,10 @@ export const DEFAULT_SETTINGS = {
     whisper_threshold_value: 0.038,
     max_record_duration: 3.0,
     confirmation_timeout: 10.0,
-    no_whisper_timeout: 3.0
+    no_whisper_timeout: 3.0,
+    success_screen_duration: 2.0,
+    bg_whisper_min_wait: 0.5,
+    bg_whisper_max_wait: 3.0
   },
   texts: {
     initial_message_text: `DE FLUISTERWOLK\nomhult je met namen van dierbare overleden.\nWie mis jij?\nFluister deze naam terwijl je de knop ingedrukt houdt.\n\n\n\n\nTHE WHISPERING CLOUD\nsurrounds you with names of deceased beloved ones. \nWho are you missing? \nWhisper this name while you keep the button pressed.`,

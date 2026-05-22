@@ -118,7 +118,7 @@ function App() {
   const autoStopTimerRef = useRef(null);
 
   // Background audio loops refs
-  const backgroundAudioRef = useRef(null);
+  const playingBackgroundAudiosRef = useRef([]);
   const backgroundPlayTimerRef = useRef(null);
   const confirmationLoopRef = useRef(null);
 
@@ -167,10 +167,9 @@ function App() {
   }, [state, whispers, showAdmin]);
 
   const scheduleNextBackgroundWhisper = () => {
-    stopBackgroundWhispers();
-    
-    // Random wait between 5 and 12 seconds
-    const interval = Math.random() * 7000 + 5000;
+    const minWait = (parseFloat(settings.calibration?.bg_whisper_min_wait) || 0.5) * 1000;
+    const maxWait = (parseFloat(settings.calibration?.bg_whisper_max_wait) || 3.0) * 1000;
+    const interval = Math.random() * (maxWait - minWait) + minWait;
     
     backgroundPlayTimerRef.current = setTimeout(() => {
       playRandomWhisper();
@@ -186,15 +185,17 @@ function App() {
       
       const audio = new Audio(whisper.audioUrl);
       audio.volume = 0.55; // Soft volume for whispering
-      backgroundAudioRef.current = audio;
+      playingBackgroundAudiosRef.current.push(audio);
 
       audio.play().catch(e => {
         console.log("Audio playback blocked/interrupted by browser:", e);
       });
 
       audio.onended = () => {
-        scheduleNextBackgroundWhisper();
+        playingBackgroundAudiosRef.current = playingBackgroundAudiosRef.current.filter(a => a !== audio);
       };
+
+      scheduleNextBackgroundWhisper();
     } catch (err) {
       console.error("Error in background whisper play:", err);
       scheduleNextBackgroundWhisper();
@@ -206,12 +207,12 @@ function App() {
       clearTimeout(backgroundPlayTimerRef.current);
       backgroundPlayTimerRef.current = null;
     }
-    if (backgroundAudioRef.current) {
+    playingBackgroundAudiosRef.current.forEach(audio => {
       try {
-        backgroundAudioRef.current.pause();
-        backgroundAudioRef.current = null;
+        audio.pause();
       } catch (e) {}
-    }
+    });
+    playingBackgroundAudiosRef.current = [];
   };
 
   // 3. Audio Confirmation Loop playback (loops every 3 seconds)
@@ -482,9 +483,10 @@ function App() {
       console.error("Save error:", e);
     }
 
+    const successDurationMs = (parseFloat(settings.calibration?.success_screen_duration) || 2.0) * 1000;
     setTimeout(() => {
       setState("IDLE");
-    }, 2000); // Display sent screen for 2 seconds
+    }, successDurationMs);
   };
 
   const confirmDiscardWhisper = () => {
