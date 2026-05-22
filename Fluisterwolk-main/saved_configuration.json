@@ -1,0 +1,56 @@
+{
+    "calibration": {
+        "whisper_threshold_value": "0.08",
+        "min_whisper_confidence_value": "3.0",
+        "new_whispers_min_interval": "1.0",
+        "new_whispers_max_interval": "5.0",
+        "Audio_Loudness": -50.0
+    },
+    "device_settings": {
+        "selected_device_index": "1"
+    },
+    "textandcolors": {
+        "whisper_prompt_text": "Fluister zachtjes de naam in de microfoon\n\n\n\nWhisper softly the name into the mic",
+        "whisper_prompt_color": [
+            247,
+            196,
+            255
+        ],
+        "initial_message_text": "DE FLUISTERWOLK\nomhult je met namen van dierbare overleden.\nWie mis jij?\nFluister deze naam terwijl je de knop ingedrukt houdt.\n\n\n\n\nTHE WHISPERING CLOUD\nsurrounds you with names of deceased beloved ones. \nWho are you missing? \nWhisper this name while you keep the button pressed.",
+        "initial_message_color": [
+            147,
+            227,
+            253
+        ],
+        "whisper_sent_text": "Zolang hun namen genoemd worden is niemand vergeten\nDankjewel voor je bijdrage!\n\n\nAs long as their names are named they will not be forgotten\nThank you for your contribution!",
+        "whisper_sent_color": [
+            0,
+            255,
+            0
+        ],
+        "retry_prompt_text": "Heb respect\nAlsjeblieft alleen de naam van een overledene influisteren in de microfoon\n\n\n\nBe respectful\nPlease only whisper the name of a deceased person into the mic",
+        "retry_prompt_color": [
+            255,
+            255,
+            0
+        ],
+        "no_whisper_detected_text": "Zachtjes fluisteren alsjeblieft\nDoe het nog eens\n\n\nPlease whisper the name  into the mic again",
+        "no_whisper_color": [
+            255,
+            0,
+            0
+        ],
+        "checking_audio_text": "Dank,\nwacht nog even op mij\n\n\nThank you,\nWait a little for me",
+        "checking_audio_color": [
+            255,
+            255,
+            0
+        ],
+        "whisper_thank_you_text": "Om de naam aan de Fluisterwolk toe te voegen, druk de knop 1 maal\nOm te verwijderen druk de knop 2 maal\n\n\n\nTo save the name press the button once\nTo delete press twice",
+        "whisper_thank_you_color": [
+            89,
+            255,
+            55
+        ]
+    }
+}

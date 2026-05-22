@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+temp/
+deletesoon/
+lost_sounds/
+whispers/
+*.tmp
+*.wav
+device_settings.json
+calibration.json
+whisperbook.json
+textandcolors.json
+.venv/
+venv/
+
+# Node / Frontend
+web/node_modules/
+web/dist/
+web/.env
+web/.env.local
+
+# OS / System
+.DS_Store
+Thumbs.db

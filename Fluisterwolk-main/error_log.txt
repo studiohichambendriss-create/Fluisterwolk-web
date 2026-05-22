@@ -1,0 +1,40 @@
+[2024-11-16 17:19:37] Unexpected error: mixer not initialized
+Traceback (most recent call last):
+  File "C:\Users\Gebruiker\Desktop\Fluisterwolk\fluiserbox2.0.py", line 1096, in <module>
+    handle_recording_confirmation(recorded_file)
+  File "C:\Users\Gebruiker\Desktop\Fluisterwolk\fluiserbox2.0.py", line 729, in handle_recording_confirmation
+    current_whisper_playing = play_audio(temp_normalized_file)
+  File "C:\Users\Gebruiker\Desktop\Fluisterwolk\fluiserbox2.0.py", line 965, in play_audio
+    pygame.mixer.music.play()
+pygame.error: mixer not initialized
+
+[2024-12-04 16:07:06] Unexpected error: name 'recording_start_time' is not defined
+Traceback (most recent call last):
+  File "C:\Users\Gebruiker\Desktop\Fluisterwolk\fluiserbox2.0.py", line 1107, in <module>
+    elapsed_time = time.time() - recording_start_time
+NameError: name 'recording_start_time' is not defined
+
+[2024-12-04 16:18:08] Unexpected error: name 'recording_start_time' is not defined
+Traceback (most recent call last):
+  File "C:\Users\Gebruiker\Desktop\Fluisterwolk\fluiserbox2.0.py", line 1122, in <module>
+    elapsed_time = time.time() - recording_start_time
+NameError: name 'recording_start_time' is not defined
+
+[2024-12-04 16:19:57] Unexpected error: unsupported operand type(s) for -: 'float' and 'NoneType'
+Traceback (most recent call last):
+  File "C:\Users\Gebruiker\Desktop\Fluisterwolk\fluiserbox2.0.py", line 1123, in <module>
+    elapsed_time = time.time() - recording_start_time
+TypeError: unsupported operand type(s) for -: 'float' and 'NoneType'
+
+[2024-12-04 16:21:25] Unexpected error: name 'recording_start_time' is not defined
+Traceback (most recent call last):
+  File "C:\Users\Gebruiker\Desktop\Fluisterwolk\fluiserbox2.0.py", line 1122, in <module>
+    if recording_start_time is None:
+NameError: name 'recording_start_time' is not defined
+
+[2024-12-04 16:34:17] Unexpected error: name 'recording_start_time' is not defined
+Traceback (most recent call last):
+  File "C:\Users\Gebruiker\Desktop\Fluisterwolk\fluiserbox2.0.py", line 1127, in <module>
+    if recording_start_time is None:
+NameError: name 'recording_start_time' is not defined
+

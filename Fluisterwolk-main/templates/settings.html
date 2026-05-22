@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings</title>
+    <style>
+        /* General styles */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .wrapper {
+            max-width: 900px;
+            width: 100%;
+            margin: auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+        }
+
+        h1, h2 {
+            color: #333;
+            text-align: center;
+        }
+
+        /* Top buttons styling */
+        
+        .top-buttons {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap; /* Allows buttons to wrap on smaller screens */
+            margin-bottom: 20px;
+        }
+        .recordings-button {
+            background-color: #9b59b6; /* Purple color */
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .recordings-button:hover {
+            background-color: #8e44ad; /* Darker purple on hover */
+        }
+
+        .top-buttons button {
+            margin: 10px 5px; /* Add spacing for mobile view */
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            color: white;
+            font-weight: bold;
+        }
+
+        /* Individual button styles */
+        .save-button {
+            background-color: #3498db;
+        }
+
+        .load-button {
+            background-color: #e67e22;
+        }
+
+        .edit-all-button {
+            background-color: #2ecc71;
+        }
+
+        .save-all-button {
+            background-color: #f39c12;
+        }
+
+        .save-button:hover {
+            background-color: #2980b9;
+        }
+
+        .load-button:hover {
+            background-color: #d35400;
+        }
+
+        .edit-button {
+            background-color: #e67e22;
+        }
+
+        .save-button {
+            background-color: #3498db;
+        }
+
+        /* Table styling */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #f2f2f2;
+            color: #555;
+            font-weight: bold;
+        }
+
+        td {
+            color: #555;
+        }
+
+        td input[type="text"], td input[type="color"] {
+            padding: 8px;
+            width: 80%;
+            box-sizing: border-box;
+        }
+
+        /* General button styling */
+        button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            background-color: #3498db;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        .color-picker-btn {
+            border: 1px solid #ccc;
+            width: 50px;
+            height: 30px;
+            cursor: pointer;
+            display: inline-block;
+            background-color: inherit;
+        }
+
+        /* Mobile-specific styling */
+        @media only screen and (max-width: 600px) {
+            body {
+                padding: 10px; /* Reduce padding for smaller screens */
+            }
+
+            .wrapper {
+                padding: 10px; /* Reduce inner padding */
+                width: 100%;
+            }
+
+            h1, h2 {
+                font-size: 1.5em; /* Decrease heading font size for mobile */
+            }
+
+            .top-buttons {
+                flex-direction: column; /* Stack buttons vertically on small screens */
+                align-items: center;
+            }
+
+            .top-buttons button {
+                width: 100%; /* Full width for buttons on mobile */
+                margin: 5px 0; /* Add vertical spacing */
+                font-size: 16px; /* Slightly smaller font for better fit */
+                padding: 12px; /* Increase padding for easier touch */
+            }
+
+            table {
+                font-size: 14px; /* Reduce table font size */
+                box-shadow: none; /* Remove shadow to simplify look on mobile */
+            }
+
+            th, td {
+                padding: 8px; /* Reduce padding for better fit */
+            }
+
+            /* For table to be more readable on smaller devices */
+            td {
+                word-wrap: break-word; /* Allow text to wrap if it's too long */
+            }
+
+            .color-picker-btn {
+                width: 40px; /* Smaller color picker for mobile */
+                height: 40px; /* Square shape */
+            }
+
+            .play-button, .delete-button {
+                width: 60px; /* Fixed width for square shape */
+                height: 60px; /* Fixed height for square shape */
+                font-size: 14px; /* Adjust font size to fit the smaller button */
+            }
+
+            button {
+                font-size: 14px; /* Slightly smaller general button text */
+            }
+        }
+
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <h1>Settings</h1>
+
+        <!-- Top buttons for Save All and Load All -->
+        <div class="top-buttons">
+            <button class="recordings-button" onclick="goToRecordings()">Recordings</button>
+            <button class="save-button" onclick="saveAllSettings()">Save All Settings to Backup</button>
+            <button class="load-button" onclick="loadAllSettings()">Load Settings from Backup</button>
+            <button class="edit-button" onclick="editAll()">Edit All</button>
+            <button class="save-button" onclick="saveAll()">Save All</button>
+            <button onclick="killFluisterbox()">Restart program</button>
+        </div>
+
+        <h2>Calibration Settings</h2>
+        <table id="calibration-table">
+            <tr>
+                <th>Key</th>
+                <th>Value</th>
+                <th>Action</th>
+            </tr>
+            {% for key, value in calibration.items() %}
+            <tr>
+                <td>{{ key }}</td>
+                <td id="calibration-{{ key }}">{{ value }}</td>
+                <td>
+                    <button onclick="editField('calibration', '{{ key }}', '{{ value }}')">Edit</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <h2>Device Settings</h2>
+        <table id="device_settings-table">
+            <tr>
+                <th>Key</th>
+                <th>Value</th>
+                <th>Action</th>
+            </tr>
+            {% for key, value in device_settings.items() %}
+            <tr>
+                <td>{{ key }}</td>
+                <td id="device_settings-{{ key }}">{{ value }}</td>
+                <td>
+                    <button onclick="editField('device_settings', '{{ key }}', '{{ value }}')">Edit</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <h2>Text and Colors</h2>
+        <table id="textandcolors-table">
+            <tr>
+                <th>Key</th>
+                <th>Value</th>
+                <th>Action</th>
+            </tr>
+            {% for key, value in textandcolors.items() %}
+            <tr>
+                <td>{{ key }}</td>
+                <td id="textandcolors-{{ key }}">
+                    {% if 'color' in key.lower() %}
+                    <button class="color-picker-btn" style="background-color: rgb({{ value[0] }}, {{ value[1] }}, {{ value[2] }});" onclick="editColorField('textandcolors', '{{ key }}', '{{ value }}')"></button>
+                    {% else %}
+                    {{ value }}
+                    {% endif %}
+                </td>
+                <td>
+                    {% if 'color' not in key.lower() %}
+                    <button class="edit-text-button" data-json-type="textandcolors" data-key="{{ key }}">Edit</button>
+                    {% else %}
+                    <button onclick="editColorField('textandcolors', '{{ key }}', '{{ value }}')">Edit Color</button>
+                    {% endif %}
+                </td>
+    
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <script>
+        const textData = {{ textandcolors | tojson | safe }};
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('.edit-text-button').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    const jsonType = this.getAttribute('data-json-type');
+                    const key = this.getAttribute('data-key');
+
+                    // Fetch the value from textData using the key
+                    const value = textData[key] || "";
+
+                    // Proceed to edit the field
+                    editField(jsonType, key, value);
+                });
+            });
+        });
+
+        function editAll() {
+            // Types of JSON data we are managing
+            const jsonTypes = ['calibration', 'device_settings', 'textandcolors'];
+
+            // Loop through each JSON type and make every field editable (excluding the header)
+            jsonTypes.forEach(jsonType => {
+                const rows = document.querySelectorAll(`#${jsonType}-table tr`);
+                rows.forEach((row, index) => {
+                    if (index === 0) return; // Skip the header row
+
+                    const key = row.cells[0].innerText.trim(); // Get key from first cell
+                    const valueCell = row.cells[1]; // The cell that contains the value
+
+                    if (valueCell.querySelector('input')) return; // Skip if already editing
+
+                    const value = valueCell.innerText.trim();
+
+                    if (key && value) {
+                        // Check if the key represents a color field
+                        if (jsonType === 'textandcolors' && key.toLowerCase().includes('color')) {
+                            try {
+                                // Convert RGB values to an array
+                                const rgbArray = JSON.parse(value.replace(/'/g, '"'));
+                                const colorHex = rgbToHex(rgbArray);
+
+                                // Replace the field content with a color picker input for editing
+                                valueCell.innerHTML = `<input type='color' id='input-${jsonType}-${key}' value='${colorHex}' style="width: 50px; height: 30px; border: none;" oninput="updateColorPreview(this)">`;
+                            } catch (e) {
+                                console.error("Invalid color format for key: ", key);
+                            }
+                        } else {
+                            // Otherwise, it's a text field
+                            valueCell.innerHTML = `<input type='text' id='input-${jsonType}-${key}' value='${value}' style="width: 100%;">`;
+                        }
+
+                        // Replace the action button in the last cell with "Save"
+                        const buttonCell = row.cells[2];
+                        buttonCell.innerHTML = `<button onclick="saveField('${jsonType}', '${key}')">Save</button>`;
+                    }
+                });
+            });
+        }
+        
+        function saveAll() {
+            // Gather inputs for each section (calibration, device_settings, textandcolors)
+            const jsonTypes = ['calibration', 'device_settings', 'textandcolors'];
+    
+            jsonTypes.forEach(jsonType => {
+                const rows = document.querySelectorAll(`#${jsonType}-table tr`);
+        
+                rows.forEach((row, index) => {
+                    if (index === 0) return; // Skip header row
+            
+                    const keyCell = row.children[0];
+                    const valueCell = row.children[1];
+            
+                    if (keyCell && valueCell) {
+                        const key = keyCell.textContent.trim();
+                        const input = valueCell.querySelector('input');
+
+                        if (input) {
+                            let newValue = input.value;
+
+                            // Handle color input specifically to convert it to RGB array format
+                            if (input.type === 'color') {
+                                newValue = JSON.stringify(hexToRgbArray(newValue));
+                            }
+
+                            // Check for non-empty and valid key-value pairs
+                            if (key && newValue) {
+                                // Send the updated value to the server
+                                fetch('/edit_json', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                        json_type: jsonType,
+                                        key: key,
+                                        value: newValue
+                                    })
+                                }).then(response => response.json())
+                                .then(data => {
+                                    if (data.status !== 'success') {
+                                        console.error(`Failed to save key: ${key}, value: ${newValue}`);
+                                    }
+                                }).catch(error => {
+                                    console.error('Error saving:', error);
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+
+            // Optionally reload page to reflect changes (remove if not needed)
+            location.reload();
+        }
+        function saveAllSettings() {
+            fetch('/save_all_settings', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Settings saved successfully - No alert needed
+                    } else {
+                        console.error("Failed to save settings.");
+                    }
+                });
+        }
+
+        function loadAllSettings() {
+            fetch('/load_all_settings', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Settings loaded successfully - No alert needed
+                        location.reload(); // Just reload the page to reflect updated settings
+                    } else {
+                        console.error("Failed to load settings.");
+                    }
+                });
+        }
+
+        function editField(jsonType, key, value) {
+            const cell = document.getElementById(`${jsonType}-${key}`);
+
+            // Clear the cell content
+            cell.innerHTML = '';
+
+            // Create a textarea element
+            const textarea = document.createElement('textarea');
+            textarea.id = `input-${jsonType}-${key}`;
+            textarea.style.width = '100%';
+            textarea.style.height = '80px';
+            textarea.value = value;  // Set the multi-line text
+
+            // Append the textarea to the cell
+            cell.appendChild(textarea);
+
+            // Replace the edit button with a save button
+            const buttonCell = cell.nextElementSibling;
+            buttonCell.innerHTML = '';  // Clear existing content
+            const saveButton = document.createElement('button');
+            saveButton.textContent = 'Save';
+            saveButton.onclick = function () {
+                saveField(jsonType, key);
+            };
+            buttonCell.appendChild(saveButton);
+        }
+
+        async function killFluisterbox() {
+            const response = await fetch('/kill_fluisterbox', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await response.json();
+            alert(result.message);
+        }
+
+        function saveField(jsonType, key) {
+            const textarea = document.getElementById(`input-${jsonType}-${key}`);
+            const newValue = textarea.value;  // Get the updated text
+
+            fetch('/edit_json', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    json_type: jsonType,
+                    key: key,
+                    value: newValue,
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Update the textData object with the new value
+                    textData[key] = newValue;
+
+                    // Optionally update the displayed text
+                    const cell = document.getElementById(`${jsonType}-${key}`);
+                    cell.textContent = newValue;
+
+                    // Restore the edit button
+                    const buttonCell = cell.nextElementSibling;
+                    buttonCell.innerHTML = `<button class="edit-text-button" data-json-type="${jsonType}" data-key="${key}">Edit</button>`;
+
+                    // Re-attach the event listener to the new button
+                    buttonCell.querySelector('.edit-text-button').addEventListener('click', function () {
+                        editField(jsonType, key, textData[key]);
+                    });
+                } else {
+                    console.error('Failed to save.', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+
+        function editColorField(jsonType, key, value) {
+            // If `value` is a string, parse it; otherwise, use it as-is
+            const rgbArray = Array.isArray(value) ? value : JSON.parse(value.replace(/'/g, '"'));
+            const colorHex = rgbToHex(rgbArray);  // Convert RGB array to hex color for color input
+
+            // Replace the field content with a color picker input for editing
+            const cell = document.getElementById(`${jsonType}-${key}`);
+            cell.innerHTML = `<input type='color' id='input-${jsonType}-${key}' value='${colorHex}' style="width: 50px; height: 30px; border: none;" oninput="updateColorPreview(this)">`;
+
+            // Replace the edit button with a save button
+            const buttonCell = cell.nextElementSibling;
+            buttonCell.innerHTML = `<button onclick="saveColorField('${jsonType}', '${key}')">Save</button>`;
+
+            // Set the current color immediately in the color picker
+            updateColorPreview(document.getElementById(`input-${jsonType}-${key}`));
+        }
+
+        function saveColorField(jsonType, key) {
+            const hexValue = document.getElementById(`input-${jsonType}-${key}`).value;
+            const rgbValue = hexToRgbArray(hexValue);  // Convert hex back to RGB array
+
+            fetch('/edit_json', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    json_type: jsonType,
+                    key: key,
+                    value: rgbValue  // Send RGB array to the server
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload(); // Reload page to reflect changes without any alerts
+                } else {
+                    console.error("Failed to save.", data.message);
+                }
+            }).catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        // Helper function to convert RGB array to hex color
+        function rgbToHex(rgbArray) {
+            if (Array.isArray(rgbArray) && rgbArray.length === 3) {
+                const [r, g, b] = rgbArray;
+                return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+            }
+            return '#000000';  // Default to black if input is invalid
+        }
+
+
+        // Utility function to convert hex to RGB array
+        function hexToRgbArray(hex) {
+            // Strip the leading '#' if present
+            hex = hex.replace(/^#/, '');
+
+            // Parse the hexadecimal color string and convert to integers
+            let r = parseInt(hex.slice(0, 2), 16);
+            let g = parseInt(hex.slice(2, 4), 16);
+            let b = parseInt(hex.slice(4, 6), 16);
+            return [r, g, b];
+        }
+        function goToRecordings() {
+            // Redirect the user to the index page (assuming the route is '/')
+            window.location.href = "/";
+        }
+        function rgbToHex(rgbArray) {
+            if (Array.isArray(rgbArray)) {
+                const r = rgbArray[0];
+                const g = rgbArray[1];
+                const b = rgbArray[2];
+                return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+            }
+            return '#000000';
+        }
+
+        function updateColorPreview(colorInput) {
+            // Update the button background with the current color value
+            colorInput.style.backgroundColor = colorInput.value;
+        }
+    </script>
+</body>
+</html>
