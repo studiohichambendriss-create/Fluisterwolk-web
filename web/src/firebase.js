@@ -225,20 +225,9 @@ export const dbService = {
 };
 
 export const storageService = {
-  // Upload audio blob
+  // Upload audio blob (Bypass Firebase Storage, use Base64 direct to Firestore Database)
   uploadAudio: async (blob, filename) => {
-    if (!isMockMode && storage) {
-      try {
-        const storageRef = ref(storage, `whispers/${filename}`);
-        await uploadBytes(storageRef, blob);
-        const url = await getDownloadURL(storageRef);
-        return url;
-      } catch (e) {
-        console.error("Firebase Storage error, simulating upload URL:", e);
-      }
-    }
-
-    // Mock - Convert blob to data URL for local persistence
+    // Convert blob to data URL for direct database persistence
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -248,17 +237,8 @@ export const storageService = {
     });
   },
 
-  // Delete audio object
+  // Delete audio object (No-op since it's now deleted with the Firestore document)
   deleteAudio: async (filename) => {
-    if (!isMockMode && storage) {
-      try {
-        const storageRef = ref(storage, `whispers/${filename}`);
-        await deleteObject(storageRef);
-        return true;
-      } catch (e) {
-        console.error("Firebase Storage delete error:", e);
-      }
-    }
     return true;
   }
 };
