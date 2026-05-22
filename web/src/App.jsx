@@ -1,32 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import AdminPanel from "./components/AdminPanel";
-import { dbService, storageService } from "./firebase";
+import { dbService, storageService, settingsService, DEFAULT_SETTINGS } from "./firebase";
 import { Shield } from "lucide-react";
 import "./App.css";
-
-// Precise Texts and Colors from textandcolors.json
-const TEXTS = {
-  initial_message_text: `DE FLUISTERWOLK\nomhult je met namen van dierbare overleden.\nWie mis jij?\nFluister deze naam terwijl je de knop ingedrukt houdt.\n\n\n\n\nTHE WHISPERING CLOUD\nsurrounds you with names of deceased beloved ones. \nWho are you missing? \nWhisper this name while you keep the button pressed.`,
-  initial_message_color: [165, 231, 253],
-
-  whisper_prompt_text: `Fluister zachtjes de naam in de microfoon\n\n\n\nWhisper softly the name into the mic`,
-  whisper_prompt_color: [247, 196, 255],
-
-  checking_audio_text: `Dank,\nwacht nog even op mij\n\n\nThank you,\nWait a little for me`,
-  checking_audio_color: [158, 236, 255],
-
-  whisper_thank_you_text: `Om de naam aan de Fluisterwolk toe te voegen, druk de knop 1 maal\nOm te verwijderen druk de knop 2 maal\n\n\n\nTo save the name press the button once\nTo delete press twice`,
-  whisper_thank_you_color: [194, 251, 255],
-
-  whisper_sent_text: `Zolang hun namen genoemd worden is niemand vergeten\nDankjewel voor je bijdrage!\n\n\nAs long as their names are named they will not be forgotten\nThank you for your contribution!`,
-  whisper_sent_color: [142, 245, 243],
-
-  retry_prompt_text: `Heb respect\nAlsjeblieft alleen de naam van een overledene influisteren in de microfoon\n\n\n\nBe respectful\nPlease only whisper the name of a deceased person into the mic`,
-  retry_prompt_color: [255, 255, 0],
-
-  no_whisper_detected_text: `Zachtjes fluisteren alsjeblieft\nDoe het nog eens\n\n\nPlease whisper the name softly into the mic again`,
-  no_whisper_color: [255, 0, 0]
-};
 
 // Web Speech API
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -115,9 +91,18 @@ function App() {
     stateRef.current = state;
   }, [state]);
 
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [whispers, setWhispers] = useState([]);
-  const [showAdmin, setShowAdmin] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(window.location.hash === "#/admin");
   const [transcription, setTranscription] = useState("");
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setShowAdmin(window.location.hash === "#/admin");
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
   const [recordedUrl, setRecordedUrl] = useState(null);
   const [recordedBlob, setRecordedBlob] = useState(null);
 
@@ -130,6 +115,7 @@ function App() {
   const collectedRmsRef = useRef([]);
   const animationFrameRef = useRef(null);
   const recognitionRef = useRef(null);
+  const autoStopTimerRef = useRef(null);
 
   // Background audio loops refs
   const backgroundAudioRef = useRef(null);
@@ -141,9 +127,19 @@ function App() {
   const clickCountRef = useRef(0);
   const firstClickTimeRef = useRef(0);
 
+  const loadDynamicSettings = async () => {
+    try {
+      const liveSettings = await settingsService.getSettings();
+      setSettings(liveSettings);
+    } catch (e) {
+      console.error("Failed to load settings:", e);
+    }
+  };
+
   // 1. Fetch whispers from DB on mount
   useEffect(() => {
     fetchWhispers();
+    loadDynamicSettings();
     return () => {
       stopBackgroundWhispers();
       stopConfirmationLoop();
@@ -366,6 +362,12 @@ function App() {
         rec.start();
       }
 
+      // Auto-stop recording if it exceeds max duration from calibration settings
+      const maxRecordMs = (parseFloat(settings.calibration?.max_record_duration) || 3.0) * 1000;
+      autoStopTimerRef.current = setTimeout(() => {
+        stopRecording();
+      }, maxRecordMs);
+
     } catch (err) {
       console.error("Microphone Access Blocked:", err);
       setState("IDLE");
@@ -374,7 +376,13 @@ function App() {
   };
 
   const stopRecording = () => {
-    if (!isHoldingRef.current) return;
+    // Clear auto-stop timer
+    if (autoStopTimerRef.current) {
+      clearTimeout(autoStopTimerRef.current);
+      autoStopTimerRef.current = null;
+    }
+
+    if (!isHoldingRef.current && stateRef.current !== "RECORDING") return;
     isHoldingRef.current = false;
 
     setState("CHECKING");
@@ -395,11 +403,15 @@ function App() {
     const rmsList = collectedRmsRef.current;
     const avgRms = rmsList.reduce((a, b) => a + b, 0) / (rmsList.length || 1);
     
-    // Threshold match. Whispers average RMS < 0.038
-    const WHISPER_THRESHOLD = 0.038;
+    // Dynamic threshold match
+    const WHISPER_THRESHOLD = settings.calibration?.whisper_threshold_value !== undefined
+      ? parseFloat(settings.calibration.whisper_threshold_value)
+      : 0.038;
     const isWhispered = avgRms < WHISPER_THRESHOLD;
 
-    console.log("Audio Processing. Avg RMS:", avgRms, "Is Whisper:", isWhispered);
+    console.log("Audio Processing. Avg RMS:", avgRms, "Threshold:", WHISPER_THRESHOLD, "Is Whisper:", isWhispered);
+
+    const noWhisperTimeoutMs = (parseFloat(settings.calibration?.no_whisper_timeout) || 3.0) * 1000;
 
     setTimeout(() => {
       if (isWhispered) {
@@ -409,7 +421,7 @@ function App() {
         setState("TOO_LOUD");
         setTimeout(() => {
           setState("IDLE");
-        }, 3000); // no_whisper_timeout = 3.0s
+        }, noWhisperTimeoutMs);
       }
     }, 1000);
   };
@@ -498,7 +510,7 @@ function App() {
         }
       } else if (e.key === "Tab") {
         e.preventDefault();
-        setShowAdmin(true);
+        window.location.hash = "#/admin";
       }
     };
 
@@ -538,21 +550,25 @@ function App() {
 
   // Render content according to current installation state
   const renderStateContent = () => {
+    const txt = {
+      ...DEFAULT_SETTINGS.texts,
+      ...(settings?.texts || {})
+    };
     switch (state) {
       case "IDLE":
-        return <AutoScalingText text={TEXTS.initial_message_text} color={TEXTS.initial_message_color} />;
+        return <AutoScalingText text={txt.initial_message_text} color={txt.initial_message_color} />;
       case "RECORDING":
-        return <AutoScalingText text={TEXTS.whisper_prompt_text} color={TEXTS.whisper_prompt_color} />;
+        return <AutoScalingText text={txt.whisper_prompt_text} color={txt.whisper_prompt_color} />;
       case "CHECKING":
-        return <AutoScalingText text={TEXTS.checking_audio_text} color={TEXTS.checking_audio_color} />;
+        return <AutoScalingText text={txt.checking_audio_text} color={txt.checking_audio_color} />;
       case "CONFIRMATION":
-        return <AutoScalingText text={TEXTS.whisper_thank_you_text} color={TEXTS.whisper_thank_you_color} />;
+        return <AutoScalingText text={txt.whisper_thank_you_text} color={txt.whisper_thank_you_color} />;
       case "TOO_LOUD":
-        return <AutoScalingText text={TEXTS.no_whisper_detected_text} color={TEXTS.no_whisper_color} />;
+        return <AutoScalingText text={txt.no_whisper_detected_text} color={txt.no_whisper_color} />;
       case "RETRY":
-        return <AutoScalingText text={TEXTS.retry_prompt_text} color={TEXTS.retry_prompt_color} />;
+        return <AutoScalingText text={txt.retry_prompt_text} color={txt.retry_prompt_color} />;
       case "SUCCESS":
-        return <AutoScalingText text={TEXTS.whisper_sent_text} color={TEXTS.whisper_sent_color} />;
+        return <AutoScalingText text={txt.whisper_sent_text} color={txt.whisper_sent_color} />;
       default:
         return null;
     }
@@ -590,7 +606,7 @@ function App() {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            setShowAdmin(true);
+            window.location.hash = "#/admin";
           }}
           style={{
             position: "absolute",
@@ -615,8 +631,9 @@ function App() {
       {showAdmin && (
         <AdminPanel 
           onClose={() => {
-            setShowAdmin(false);
+            window.location.hash = "#/";
             fetchWhispers(); // Refresh list on exit
+            loadDynamicSettings(); // Sync edited texts/calibration settings
           }} 
         />
       )}
