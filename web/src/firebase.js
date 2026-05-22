@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "firebase/auth";
 
 // DEFAULT CONFIG
 const defaultFirebaseConfig = {
@@ -244,6 +244,20 @@ export const storageService = {
 };
 
 export const authService = {
+  // Login admin (Google)
+  loginWithGoogle: async () => {
+    if (!isMockMode && auth) {
+      const provider = new GoogleAuthProvider();
+      const userCredential = await signInWithPopup(auth, provider);
+      return userCredential.user;
+    }
+
+    // Mock Admin Bypass
+    const mockUser = { email: "studiohichambendriss@gmail.com", uid: "mock-admin-uid" };
+    localStorage.setItem("fluisterwolk_mock_user", JSON.stringify(mockUser));
+    return mockUser;
+  },
+
   // Login admin
   loginAdmin: async (email, password) => {
     if (!isMockMode && auth) {
