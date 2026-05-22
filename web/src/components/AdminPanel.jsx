@@ -94,6 +94,12 @@ const AdminPanel = ({ onClose }) => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError("");
+
+    if (email.trim().toLowerCase() !== "studiohichambendriss@gmail.com") {
+      setLoginError("Toegang geweigerd: Alleen studiohichambendriss@gmail.com is toegestaan.");
+      return;
+    }
+
     try {
       await authService.loginAdmin(email, password);
     } catch (err) {
