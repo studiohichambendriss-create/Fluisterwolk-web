@@ -46,6 +46,52 @@ const AdminPanel = ({ onClose }) => {
   // Active state texts editing state
   const [selectedTextState, setSelectedTextState] = useState("initial_message");
 
+  const startLiveMonitor = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      liveStreamRef.current = stream;
+
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      liveAudioCtxRef.current = ctx;
+
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      src.connect(analyser);
+      liveAnalyserRef.current = analyser;
+
+      const update = () => {
+        if (!liveAnalyserRef.current) return;
+        const array = new Uint8Array(liveAnalyserRef.current.fftSize);
+        liveAnalyserRef.current.getByteTimeDomainData(array);
+        let sum = 0;
+        for (let i = 0; i < array.length; i++) {
+          const val = (array[i] - 128) / 128;
+          sum += val * val;
+        }
+        const rms = Math.sqrt(sum / array.length);
+        setLiveVolume(rms);
+        liveAnimFrameRef.current = requestAnimationFrame(update);
+      };
+      update();
+    } catch (e) {
+      console.warn("Live monitoring mic blocked:", e);
+    }
+  };
+
+  const stopLiveMonitor = () => {
+    if (liveAnimFrameRef.current) cancelAnimationFrame(liveAnimFrameRef.current);
+    if (liveStreamRef.current) {
+      liveStreamRef.current.getTracks().forEach(t => t.stop());
+      liveStreamRef.current = null;
+    }
+    if (liveAudioCtxRef.current && liveAudioCtxRef.current.state !== "closed") {
+      liveAudioCtxRef.current.close();
+      liveAudioCtxRef.current = null;
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = authService.onAuthChange((currentUser) => {
       setUser(currentUser);
@@ -254,52 +300,6 @@ const AdminPanel = ({ onClose }) => {
     audio.onended = () => {
       setPlayingId(null);
     };
-  };
-
-  const startLiveMonitor = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      liveStreamRef.current = stream;
-
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      const ctx = new AudioCtx();
-      liveAudioCtxRef.current = ctx;
-
-      const src = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      src.connect(analyser);
-      liveAnalyserRef.current = analyser;
-
-      const update = () => {
-        if (!liveAnalyserRef.current) return;
-        const array = new Uint8Array(liveAnalyserRef.current.fftSize);
-        liveAnalyserRef.current.getByteTimeDomainData(array);
-        let sum = 0;
-        for (let i = 0; i < array.length; i++) {
-          const val = (array[i] - 128) / 128;
-          sum += val * val;
-        }
-        const rms = Math.sqrt(sum / array.length);
-        setLiveVolume(rms);
-        liveAnimFrameRef.current = requestAnimationFrame(update);
-      };
-      update();
-    } catch (e) {
-      console.warn("Live monitoring mic blocked:", e);
-    }
-  };
-
-  const stopLiveMonitor = () => {
-    if (liveAnimFrameRef.current) cancelAnimationFrame(liveAnimFrameRef.current);
-    if (liveStreamRef.current) {
-      liveStreamRef.current.getTracks().forEach(t => t.stop());
-      liveStreamRef.current = null;
-    }
-    if (liveAudioCtxRef.current && liveAudioCtxRef.current.state !== "closed") {
-      liveAudioCtxRef.current.close();
-      liveAudioCtxRef.current = null;
-    }
   };
 
   // Configuration updates
