@@ -76,7 +76,7 @@ const WhisperCloud = ({ whispers, onSelectWhisper, isRecording }) => {
         y: height / 2 + Math.sin(angle) * radius,
         baseX: width / 2 + Math.cos(angle) * radius,
         baseY: height / 2 + Math.sin(angle) * radius,
-        size: Math.random() * 4 + 3,
+        size: Math.random() * 8 + 6,
         pulseVal: Math.random() * Math.PI,
         speedX: (Math.random() - 0.5) * 0.2,
         speedY: (Math.random() - 0.5) * 0.2,
@@ -181,25 +181,25 @@ const WhisperCloud = ({ whispers, onSelectWhisper, isRecording }) => {
         // Circle node draw
         const drawGlow = isHovered || activeWhisper === node.id;
         ctx.beginPath();
-        ctx.arc(node.x, node.y, node.size + (drawGlow ? 2 : 0), 0, Math.PI * 2);
-        ctx.fillStyle = drawGlow ? "rgba(45, 43, 42, 0.8)" : "rgba(45, 43, 42, 0.35)";
+        ctx.arc(node.x, node.y, node.size + (drawGlow ? 3 : 0), 0, Math.PI * 2);
+        ctx.fillStyle = drawGlow ? "rgba(45, 43, 42, 0.9)" : "rgba(45, 43, 42, 0.5)";
         ctx.fill();
 
         // Node Glow Ring
         if (drawGlow) {
           ctx.beginPath();
-          ctx.arc(node.x, node.y, node.size + 8, 0, Math.PI * 2);
-          ctx.fillStyle = "rgba(45, 43, 42, 0.05)";
+          ctx.arc(node.x, node.y, node.size + 12, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(45, 43, 42, 0.1)";
           ctx.fill();
         }
 
         // Elegant Text Render (Name / Transcription)
-        ctx.font = `italic 300 ${drawGlow ? "14px" : "12px"} 'Outfit', sans-serif`;
-        ctx.fillStyle = drawGlow ? "rgba(45, 43, 42, 1)" : "rgba(45, 43, 42, 0.65)";
+        ctx.font = `italic 400 ${drawGlow ? "20px" : "16px"} 'Outfit', sans-serif`;
+        ctx.fillStyle = drawGlow ? "rgba(45, 43, 42, 1)" : "rgba(45, 43, 42, 0.8)";
         ctx.textAlign = "center";
         
         // Slightly below node
-        ctx.fillText(node.whisper.transcription, node.x, node.y + node.size + 18);
+        ctx.fillText(node.whisper.transcription, node.x, node.y + node.size + 24);
       });
 
       // Update cursor hover tracking

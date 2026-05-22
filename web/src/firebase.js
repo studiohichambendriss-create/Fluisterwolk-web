@@ -38,49 +38,18 @@ if (!isMockMode) {
 // ==========================================
 
 const getMockWhispers = () => {
-  const data = localStorage.getItem("fluisterwolk_mock_whispers");
+  const data = localStorage.getItem("fluisterwolk_mock_whispers_v2");
   if (!data) {
-    // Initial seeds to make the app beautiful immediately
-    const initialSeeds = [
-      {
-        id: "seed-1",
-        filename: "whisper_mother.wav",
-        transcription: "Maria van de Berg",
-        confidence: 94.5,
-        speechType: "whisper",
-        timestamp: new Date(Date.now() - 4 * 3600000).toISOString().replace('T', ' ').substring(0, 19),
-        audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", // Free audio seed
-        isMock: true
-      },
-      {
-        id: "seed-2",
-        filename: "whisper_father.wav",
-        transcription: "Johannes de Groot",
-        confidence: 89.2,
-        speechType: "whisper",
-        timestamp: new Date(Date.now() - 24 * 3600000).toISOString().replace('T', ' ').substring(0, 19),
-        audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-        isMock: true
-      },
-      {
-        id: "seed-3",
-        filename: "whisper_brother.wav",
-        transcription: "Annelies",
-        confidence: 97.1,
-        speechType: "whisper",
-        timestamp: new Date(Date.now() - 48 * 3600000).toISOString().replace('T', ' ').substring(0, 19),
-        audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-        isMock: true
-      }
-    ];
-    localStorage.setItem("fluisterwolk_mock_whispers", JSON.stringify(initialSeeds));
+    // Start empty. No crazy music.
+    const initialSeeds = [];
+    localStorage.setItem("fluisterwolk_mock_whispers_v2", JSON.stringify(initialSeeds));
     return initialSeeds;
   }
   return JSON.parse(data);
 };
 
 const saveMockWhispers = (whispers) => {
-  localStorage.setItem("fluisterwolk_mock_whispers", JSON.stringify(whispers));
+  localStorage.setItem("fluisterwolk_mock_whispers_v2", JSON.stringify(whispers));
 };
 
 // ==========================================
