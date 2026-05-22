@@ -1,11 +1,176 @@
 import React, { useState, useEffect, useRef } from "react";
 import AdminPanel from "./components/AdminPanel";
 import { dbService, storageService, settingsService, DEFAULT_SETTINGS } from "./firebase";
-import { Shield } from "lucide-react";
+import { Shield, AlertTriangle } from "lucide-react";
 import "./App.css";
 
 // Web Speech API
+// Web Speech API
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+// DSP & Encoding helper functions
+function getVoicingPeriodicity(timeArray, sampleRate) {
+  const n = timeArray.length;
+  const samples = new Float32Array(n);
+  let mean = 0;
+  for (let i = 0; i < n; i++) {
+    samples[i] = (timeArray[i] - 128) / 128;
+    mean += samples[i];
+  }
+  mean /= n;
+  for (let i = 0; i < n; i++) {
+    samples[i] -= mean;
+  }
+
+  const checkLength = 256;
+  let energy0 = 0;
+  for (let i = 0; i < checkLength; i++) {
+    energy0 += samples[i] * samples[i];
+  }
+  if (energy0 < 1e-6) return 0;
+
+  const minLag = Math.round(sampleRate / 350);
+  const maxLag = Math.round(sampleRate / 80);
+
+  let maxR = 0;
+  
+  for (let lag = minLag; lag <= maxLag; lag += 2) {
+    if (lag + checkLength > n) break;
+    
+    let dotProduct = 0;
+    let energyLag = 0;
+    for (let i = 0; i < checkLength; i++) {
+      const s0 = samples[i];
+      const s1 = samples[i + lag];
+      dotProduct += s0 * s1;
+      energyLag += s1 * s1;
+    }
+    
+    if (energyLag > 1e-6) {
+      const r = dotProduct / Math.sqrt(energy0 * energyLag);
+      if (r > maxR) {
+        maxR = r;
+      }
+    }
+  }
+  
+  return maxR;
+}
+
+async function processAudioBlob(blob, minDuration) {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  const audioContext = new AudioCtx();
+  const arrayBuffer = await blob.arrayBuffer();
+  
+  let audioBuffer;
+  try {
+    audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  } catch (err) {
+    audioContext.close();
+    throw err;
+  }
+  
+  audioContext.close();
+  
+  const channelData = audioBuffer.getChannelData(0);
+  const sourceSampleRate = audioBuffer.sampleRate;
+  
+  // 1. Silence trimming (amplitude threshold 0.015)
+  let startIndex = 0;
+  while (startIndex < channelData.length && Math.abs(channelData[startIndex]) < 0.015) {
+    startIndex++;
+  }
+  
+  let endIndex = channelData.length - 1;
+  while (endIndex > startIndex && Math.abs(channelData[endIndex]) < 0.015) {
+    endIndex--;
+  }
+  
+  if (startIndex >= endIndex) {
+    startIndex = 0;
+    endIndex = channelData.length - 1;
+  }
+  
+  const trimmedDuration = (endIndex - startIndex) / sourceSampleRate;
+  if (trimmedDuration < minDuration) {
+    return { tooShort: true };
+  }
+  
+  // 2. Downsample to 16kHz Mono
+  const targetSampleRate = 16000;
+  const scale = sourceSampleRate / targetSampleRate;
+  const trimmedLength = endIndex - startIndex + 1;
+  const targetLength = Math.round(trimmedLength / scale);
+  const downsampledData = new Float32Array(targetLength);
+  
+  for (let i = 0; i < targetLength; i++) {
+    const sourceIndex = startIndex + i * scale;
+    const indexLow = Math.floor(sourceIndex);
+    const indexHigh = Math.min(endIndex, indexLow + 1);
+    const weight = sourceIndex - indexLow;
+    downsampledData[i] = (1 - weight) * channelData[indexLow] + weight * channelData[indexHigh];
+  }
+  
+  // 3. Peak Normalization to 0.90
+  let maxVal = 0;
+  for (let i = 0; i < downsampledData.length; i++) {
+    const absVal = Math.abs(downsampledData[i]);
+    if (absVal > maxVal) {
+      maxVal = absVal;
+    }
+  }
+  
+  if (maxVal > 0) {
+    const gain = 0.90 / maxVal;
+    for (let i = 0; i < downsampledData.length; i++) {
+      downsampledData[i] *= gain;
+    }
+  }
+  
+  // 4. Encode to 16-bit PCM WAV
+  const wavBlob = encodeWAV(downsampledData, targetSampleRate);
+  const wavUrl = URL.createObjectURL(wavBlob);
+  
+  return {
+    tooShort: false,
+    wavBlob,
+    wavUrl,
+    duration: trimmedDuration
+  };
+}
+
+function encodeWAV(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+  
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+function writeString(view, offset, string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+}
 
 // Auto-scaling centered text component (Mirrors Pygame's auto-font binary search layout)
 const AutoScalingText = ({ text, color }) => {
@@ -95,6 +260,7 @@ function App() {
   const [whispers, setWhispers] = useState([]);
   const [showAdmin, setShowAdmin] = useState(window.location.hash === "#/admin");
   const [transcription, setTranscription] = useState("");
+  const [dbError, setDbError] = useState(null);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -113,6 +279,10 @@ function App() {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const collectedRmsRef = useRef([]);
+  const collectedRatiosRef = useRef([]);
+  const collectedVoicingsRef = useRef([]);
+  const collectedLowAvgsRef = useRef([]);
+  const collectedHighAvgsRef = useRef([]);
   const animationFrameRef = useRef(null);
   const recognitionRef = useRef(null);
   const autoStopTimerRef = useRef(null);
@@ -126,6 +296,9 @@ function App() {
   const isHoldingRef = useRef(false);
   const clickCountRef = useRef(0);
   const firstClickTimeRef = useRef(0);
+  const stopRequestedRef = useRef(false);
+  const recordingStartTimeRef = useRef(null);
+  const ignoreOnStopRef = useRef(false);
 
   const loadDynamicSettings = async () => {
     try {
@@ -136,11 +309,24 @@ function App() {
     }
   };
 
-  // 1. Fetch whispers from DB on mount
+  // 1. Subscribe to whispers in real time on mount
   useEffect(() => {
-    fetchWhispers();
+    const unsubscribeWhispers = dbService.subscribeWhispers(
+      (data) => {
+        const sorted = [...data].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        setWhispers(sorted);
+        setDbError(null);
+      },
+      (err) => {
+        console.error("Failed to load whispers in real-time:", err);
+        setDbError("Verbindingsfout database. Offline modus actief.");
+      }
+    );
+
     loadDynamicSettings();
+
     return () => {
+      if (unsubscribeWhispers) unsubscribeWhispers();
       stopBackgroundWhispers();
       stopConfirmationLoop();
       cleanupMedia();
@@ -148,12 +334,7 @@ function App() {
   }, []);
 
   const fetchWhispers = async () => {
-    try {
-      const data = await dbService.getWhispers();
-      setWhispers(data);
-    } catch (e) {
-      console.error("Failed to load whispers:", e);
-    }
+    // Deprecated: real-time subscription handles this automatically
   };
 
   // 2. Background playback of random whispers (When IDLE)
@@ -280,21 +461,60 @@ function App() {
     return rec;
   };
 
-  // 5. Volume Analyser Loop (RMS)
-  const runRmsAnalyser = () => {
+  // 5. Audio Analyser Loop (RMS & Frequency Spectral Ratio)
+  const runAudioAnalyser = () => {
     if (!analyserRef.current) return;
-    const array = new Uint8Array(analyserRef.current.fftSize);
-    analyserRef.current.getByteTimeDomainData(array);
+    
+    // Time domain for RMS
+    const timeArray = new Uint8Array(analyserRef.current.fftSize);
+    analyserRef.current.getByteTimeDomainData(timeArray);
 
     let sum = 0;
-    for (let i = 0; i < array.length; i++) {
-      const val = (array[i] - 128) / 128;
+    for (let i = 0; i < timeArray.length; i++) {
+      const val = (timeArray[i] - 128) / 128;
       sum += val * val;
     }
-    const rms = Math.sqrt(sum / array.length);
+    const rms = Math.sqrt(sum / timeArray.length);
     collectedRmsRef.current.push(rms);
 
-    animationFrameRef.current = requestAnimationFrame(runRmsAnalyser);
+    const sampleRate = audioContextRef.current?.sampleRate || 44100;
+    const voicing = getVoicingPeriodicity(timeArray, sampleRate);
+    collectedVoicingsRef.current.push(voicing);
+
+    // Frequency domain for Spectral Ratio
+    const freqArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+    analyserRef.current.getByteFrequencyData(freqArray);
+
+    const binResolution = sampleRate / analyserRef.current.fftSize;
+
+    // Frequencies: Low: 80Hz - 400Hz, High: 600Hz - 4000Hz
+    const lowBinStart = Math.max(1, Math.round(80 / binResolution));
+    const lowBinEnd = Math.round(400 / binResolution);
+    const highBinStart = Math.round(600 / binResolution);
+    const highBinEnd = Math.round(4000 / binResolution);
+
+    let lowSum = 0;
+    let lowCount = 0;
+    for (let i = lowBinStart; i <= lowBinEnd && i < freqArray.length; i++) {
+      lowSum += freqArray[i];
+      lowCount++;
+    }
+    const lowAvg = lowCount > 0 ? (lowSum / lowCount) : 0;
+
+    let highSum = 0;
+    let highCount = 0;
+    for (let i = highBinStart; i <= highBinEnd && i < freqArray.length; i++) {
+      highSum += freqArray[i];
+      highCount++;
+    }
+    const highAvg = highCount > 0 ? (highSum / highCount) : 0;
+
+    const ratio = highAvg / (lowAvg + 0.001);
+    collectedRatiosRef.current.push(ratio);
+    collectedLowAvgsRef.current.push(lowAvg);
+    collectedHighAvgsRef.current.push(highAvg);
+
+    animationFrameRef.current = requestAnimationFrame(runAudioAnalyser);
   };
 
   // 6. Media and Recording Cleanup
@@ -314,6 +534,7 @@ function App() {
   const startRecording = async () => {
     if (isHoldingRef.current) return;
     isHoldingRef.current = true;
+    stopRequestedRef.current = false;
     
     stopBackgroundWhispers();
     setTranscription("");
@@ -321,20 +542,41 @@ function App() {
     setRecordedBlob(null);
     audioChunksRef.current = [];
     collectedRmsRef.current = [];
+    collectedRatiosRef.current = [];
+    collectedVoicingsRef.current = [];
+    collectedLowAvgsRef.current = [];
+    collectedHighAvgsRef.current = [];
+    recordingStartTimeRef.current = null;
+    ignoreOnStopRef.current = false;
 
     setState("RECORDING");
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      if (stopRequestedRef.current) {
+        console.log("Stop requested during getUserMedia. Aborting.");
+        stream.getTracks().forEach(t => t.stop());
+        setState("IDLE");
+        return;
+      }
+      
       streamRef.current = stream;
 
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       const audioContext = new AudioCtx();
       audioContextRef.current = audioContext;
 
+      if (stopRequestedRef.current) {
+        console.log("Stop requested before analyzer. Aborting.");
+        setState("IDLE");
+        cleanupMedia();
+        return;
+      }
+
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
+      analyser.fftSize = 1024;
       source.connect(analyser);
       analyserRef.current = analyser;
 
@@ -345,16 +587,44 @@ function App() {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
 
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const url = URL.createObjectURL(blob);
-        setRecordedBlob(blob);
-        setRecordedUrl(url);
-        processAudioResults(blob, url);
+      mediaRecorder.onstop = async () => {
+        if (ignoreOnStopRef.current) {
+          console.log("onstop: ignoring since ignoreOnStopRef is true");
+          return;
+        }
+        const rawBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        try {
+          const minDur = settings.calibration?.min_record_duration !== undefined
+            ? parseFloat(settings.calibration.min_record_duration)
+            : 0.6;
+          const result = await processAudioBlob(rawBlob, minDur);
+          if (result.tooShort) {
+            console.log("Recording too short in onstop. Auto returning to IDLE state.");
+            setState("IDLE");
+            return;
+          }
+          setRecordedBlob(result.wavBlob);
+          setRecordedUrl(result.wavUrl);
+          processAudioResults(result.wavBlob, result.wavUrl);
+        } catch (err) {
+          console.error("Error processing audio blob:", err);
+          const fallbackUrl = URL.createObjectURL(rawBlob);
+          setRecordedBlob(rawBlob);
+          setRecordedUrl(fallbackUrl);
+          processAudioResults(rawBlob, fallbackUrl);
+        }
       };
 
+      if (stopRequestedRef.current) {
+        console.log("Stop requested just before start. Aborting.");
+        setState("IDLE");
+        cleanupMedia();
+        return;
+      }
+
       mediaRecorder.start();
-      runRmsAnalyser();
+      recordingStartTimeRef.current = Date.now();
+      runAudioAnalyser();
 
       // Start Web Speech API
       const rec = initSpeechRecognition();
@@ -385,6 +655,37 @@ function App() {
 
     if (!isHoldingRef.current && stateRef.current !== "RECORDING") return;
     isHoldingRef.current = false;
+    stopRequestedRef.current = true;
+
+    const minDur = settings.calibration?.min_record_duration !== undefined
+      ? parseFloat(settings.calibration.min_record_duration)
+      : 0.6;
+    const duration = recordingStartTimeRef.current ? (Date.now() - recordingStartTimeRef.current) / 1000 : 0;
+
+    if (duration < minDur || !recordingStartTimeRef.current) {
+      console.log(`Recording too short (${duration.toFixed(2)}s < ${minDur}s). Reverting to IDLE directly.`);
+      ignoreOnStopRef.current = true;
+      setState("IDLE");
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (e) {}
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+      cleanupMedia();
+      return;
+    }
+
+    if (!mediaRecorderRef.current) {
+      console.log("Stop requested during initialization. Reverting to IDLE.");
+      setState("IDLE");
+      cleanupMedia();
+      return;
+    }
 
     setState("CHECKING");
 
@@ -400,17 +701,73 @@ function App() {
   };
 
   const processAudioResults = (blob, url) => {
-    // Process RMS
     const rmsList = collectedRmsRef.current;
-    const avgRms = rmsList.reduce((a, b) => a + b, 0) / (rmsList.length || 1);
-    
-    // Dynamic threshold match
-    const WHISPER_THRESHOLD = settings.calibration?.whisper_threshold_value !== undefined
-      ? parseFloat(settings.calibration.whisper_threshold_value)
-      : 0.038;
-    const isWhispered = avgRms < WHISPER_THRESHOLD;
+    const lowAvgs = collectedLowAvgsRef.current;
+    const highAvgs = collectedHighAvgsRef.current;
+    const voicingsList = collectedVoicingsRef.current;
 
-    console.log("Audio Processing. Avg RMS:", avgRms, "Threshold:", WHISPER_THRESHOLD, "Is Whisper:", isWhispered);
+    const SILENCE_THRESHOLD = settings.calibration?.silence_threshold !== undefined
+      ? parseFloat(settings.calibration.silence_threshold)
+      : 0.005;
+
+    const WHISPER_RATIO_THRESHOLD = settings.calibration?.whisper_ratio_threshold !== undefined
+      ? parseFloat(settings.calibration.whisper_ratio_threshold)
+      : 1.8;
+
+    const VOICING_THRESHOLD = settings.calibration?.voicing_threshold !== undefined
+      ? parseFloat(settings.calibration.voicing_threshold)
+      : 0.30;
+
+    // 1. Identify noise floor from the quietest 20% of frames
+    const frames = rmsList.map((rms, idx) => ({ rms, idx })).sort((a, b) => a.rms - b.rms);
+    const noiseFrameCount = Math.max(1, Math.floor(frames.length * 0.2));
+    const noiseIndices = frames.slice(0, noiseFrameCount).map(f => f.idx);
+    
+    const lowNoiseFloor = noiseIndices.reduce((sum, idx) => sum + (lowAvgs[idx] || 0), 0) / noiseFrameCount;
+    const highNoiseFloor = noiseIndices.reduce((sum, idx) => sum + (highAvgs[idx] || 0), 0) / noiseFrameCount;
+
+    // 2. Process active frames
+    let activeRmsSum = 0;
+    let activeVoicingSum = 0;
+    let activeRatioSum = 0;
+    let activeFrameCount = 0;
+
+    for (let i = 0; i < rmsList.length; i++) {
+      const rms = rmsList[i];
+      if (rms >= SILENCE_THRESHOLD) {
+        activeRmsSum += rms;
+        activeVoicingSum += voicingsList[i] || 0;
+
+        const lowSignal = Math.max(0.01, (lowAvgs[i] || 0) - lowNoiseFloor);
+        const highSignal = Math.max(0.01, (highAvgs[i] || 0) - highNoiseFloor);
+        const activeRatio = highSignal / lowSignal;
+        activeRatioSum += activeRatio;
+        
+        activeFrameCount++;
+      }
+    }
+
+    const avgRms = rmsList.reduce((a, b) => a + b, 0) / (rmsList.length || 1);
+    const avgVoicing = activeFrameCount > 0 ? (activeVoicingSum / activeFrameCount) : 0;
+    const avgActiveRatio = activeFrameCount > 0 ? (activeRatioSum / activeFrameCount) : 1.0;
+
+    const isSilence = avgRms < SILENCE_THRESHOLD;
+    const isVoiced = !isSilence && avgVoicing >= VOICING_THRESHOLD;
+    const isWhispered = !isSilence && !isVoiced && avgActiveRatio >= WHISPER_RATIO_THRESHOLD;
+
+    console.log(
+      "Smart Audio Processing. Avg RMS:", avgRms.toFixed(5), 
+      "Silence Threshold:", SILENCE_THRESHOLD, 
+      "Noise Floor Low:", lowNoiseFloor.toFixed(2),
+      "Noise Floor High:", highNoiseFloor.toFixed(2),
+      "Avg Active Ratio:", avgActiveRatio.toFixed(3), 
+      "Ratio Threshold:", WHISPER_RATIO_THRESHOLD, 
+      "Avg Voicing:", avgVoicing.toFixed(3),
+      "Voicing Threshold:", VOICING_THRESHOLD,
+      "Is Silence:", isSilence,
+      "Is Voiced:", isVoiced,
+      "Is Whisper:", isWhispered
+    );
 
     const noWhisperTimeoutMs = (parseFloat(settings.calibration?.no_whisper_timeout) || 3.0) * 1000;
 
@@ -464,7 +821,7 @@ function App() {
     }, successDurationMs);
 
     try {
-      const fileName = `whisper_${Date.now()}.webm`;
+      const fileName = `whisper_${Date.now()}.wav`;
       const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
       // 1. Upload audio to Firebase Storage
@@ -480,10 +837,11 @@ function App() {
         audioUrl: audioUrl
       };
 
-      await dbService.addWhisper(newEntry);
+      const savedId = await dbService.addWhisper(newEntry);
+      const entryWithId = { id: savedId, ...newEntry };
       
       // Update local cache
-      setWhispers(prev => [...prev, newEntry]);
+      setWhispers(prev => [entryWithId, ...prev]);
 
     } catch (e) {
       console.error("Save error:", e);
@@ -606,28 +964,50 @@ function App() {
 
       {/* Elegant, tiny unobtrusive gear in top right corner for admin portal */}
       {!showAdmin && state === "IDLE" && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            window.location.hash = "#/admin";
-          }}
-          style={{
-            position: "absolute",
-            top: "24px",
-            right: "24px",
-            background: "none",
-            border: "none",
-            color: "rgba(255, 255, 255, 0.2)",
-            cursor: "pointer",
-            zIndex: 30,
-            transition: "color 0.2s ease"
-          }}
-          onMouseEnter={(e) => e.target.style.color = "rgba(255, 255, 255, 0.6)"}
-          onMouseLeave={(e) => e.target.style.color = "rgba(255, 255, 255, 0.2)"}
-          title="Admin Paneel"
-        >
-          <Shield size={18} />
-        </button>
+        <div style={{ position: "absolute", top: "24px", right: "24px", display: "flex", alignItems: "center", gap: "10px", zIndex: 30 }}>
+          {dbError && (
+            <div 
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                backgroundColor: "rgba(245, 158, 11, 0.15)",
+                border: "1px solid rgba(245, 158, 11, 0.3)",
+                borderRadius: "12px",
+                padding: "4px 10px",
+                fontSize: "10px",
+                color: "#f59e0b",
+                fontFamily: "Outfit, sans-serif"
+              }}
+              title={dbError}
+            >
+              <AlertTriangle size={10} />
+              <span>Offline Modus</span>
+            </div>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              window.location.hash = "#/admin";
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              color: dbError ? "rgba(245, 158, 11, 0.4)" : "rgba(255, 255, 255, 0.2)",
+              cursor: "pointer",
+              transition: "color 0.2s ease",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0
+            }}
+            onMouseEnter={(e) => e.target.style.color = dbError ? "rgba(245, 158, 11, 0.8)" : "rgba(255, 255, 255, 0.6)"}
+            onMouseLeave={(e) => e.target.style.color = dbError ? "rgba(245, 158, 11, 0.4)" : "rgba(255, 255, 255, 0.2)"}
+            title="Admin Paneel"
+          >
+            <Shield size={18} />
+          </button>
+        </div>
       )}
 
       {/* Admin Panel overlay */}

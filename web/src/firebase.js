@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc } from "firebase/firestore";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, setDoc, onSnapshot, query, orderBy, limit } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "firebase/auth";
 
@@ -91,7 +91,8 @@ export const dbService = {
         const docRef = await addDoc(collection(db, "whispers"), whisperData);
         return docRef.id;
       } catch (e) {
-        console.error("Firestore error, saving to mock db instead:", e);
+        console.error("Firestore error in addWhisper:", e);
+        throw e;
       }
     }
     
@@ -115,7 +116,8 @@ export const dbService = {
         });
         return list;
       } catch (e) {
-        console.error("Firestore error, loading mock db:", e);
+        console.error("Firestore error in getWhispers:", e);
+        throw e;
       }
     }
     
@@ -134,7 +136,8 @@ export const dbService = {
         });
         return list;
       } catch (e) {
-        console.error("Firestore loading trash error:", e);
+        console.error("Firestore error in getDeletedWhispers:", e);
+        throw e;
       }
     }
     return getMockDeletedWhispers();
@@ -154,7 +157,8 @@ export const dbService = {
         await deleteDoc(doc(db, "whispers", id));
         return true;
       } catch (e) {
-        console.error("Firestore soft delete error:", e);
+        console.error("Firestore error in deleteWhisper:", e);
+        throw e;
       }
     }
 
@@ -183,10 +187,11 @@ export const dbService = {
         // 1. Write back to active whispers collection
         await setDoc(doc(db, "whispers", id), data);
         // 2. Delete from trash collection
-        await deleteDoc(doc(doc(db, "deleted_whispers", id)));
+        await deleteDoc(doc(db, "deleted_whispers", id));
         return true;
       } catch (e) {
-        console.error("Firestore restore error:", e);
+        console.error("Firestore error in restoreWhisper:", e);
+        throw e;
       }
     }
 
@@ -212,7 +217,8 @@ export const dbService = {
         await deleteDoc(doc(db, "deleted_whispers", id));
         return true;
       } catch (e) {
-        console.error("Firestore purge error:", e);
+        console.error("Firestore error in purgeWhisper:", e);
+        throw e;
       }
     }
 
@@ -221,6 +227,78 @@ export const dbService = {
     mockTrash = mockTrash.filter(item => item.id !== id);
     saveMockDeletedWhispers(mockTrash);
     return true;
+  },
+
+  // Real-time subscription to active whispers
+  subscribeWhispers: (onUpdate, onError) => {
+    if (!isMockMode && db) {
+      try {
+        const q = query(collection(db, "whispers"), orderBy("timestamp", "desc"), limit(50));
+        const unsub = onSnapshot(q, (querySnapshot) => {
+          const list = [];
+          querySnapshot.forEach((doc) => {
+            list.push({ id: doc.id, ...doc.data() });
+          });
+          onUpdate(list);
+        }, (error) => {
+          console.error("Firestore active whispers subscription error:", error);
+          if (onError) onError(error);
+          onUpdate(getMockWhispers());
+        });
+        return unsub;
+      } catch (e) {
+        console.error("Firestore active whispers subscription setup error:", e);
+        if (onError) onError(e);
+        onUpdate(getMockWhispers());
+        return () => {};
+      }
+    }
+
+    // Mock mode or offline fallback subscription
+    const handleStorageChange = (e) => {
+      if (e.key === "fluisterwolk_mock_whispers_v2") {
+        onUpdate(getMockWhispers());
+      }
+    };
+    onUpdate(getMockWhispers());
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  },
+
+  // Real-time subscription to deleted whispers
+  subscribeDeletedWhispers: (onUpdate, onError) => {
+    if (!isMockMode && db) {
+      try {
+        const q = query(collection(db, "deleted_whispers"), orderBy("deletedAt", "desc"), limit(30));
+        const unsub = onSnapshot(q, (querySnapshot) => {
+          const list = [];
+          querySnapshot.forEach((doc) => {
+            list.push({ id: doc.id, ...doc.data() });
+          });
+          onUpdate(list);
+        }, (error) => {
+          console.error("Firestore deleted whispers subscription error:", error);
+          if (onError) onError(error);
+          onUpdate(getMockDeletedWhispers());
+        });
+        return unsub;
+      } catch (e) {
+        console.error("Firestore deleted whispers subscription setup error:", e);
+        if (onError) onError(e);
+        onUpdate(getMockDeletedWhispers());
+        return () => {};
+      }
+    }
+
+    // Mock mode or offline fallback subscription
+    const handleStorageChange = (e) => {
+      if (e.key === "fluisterwolk_mock_deleted_whispers") {
+        onUpdate(getMockDeletedWhispers());
+      }
+    };
+    onUpdate(getMockDeletedWhispers());
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
   }
 };
 
@@ -305,12 +383,16 @@ export const authService = {
 export const DEFAULT_SETTINGS = {
   calibration: {
     whisper_threshold_value: 0.038,
+    whisper_ratio_threshold: 1.80,
+    silence_threshold: 0.005,
     max_record_duration: 3.0,
     confirmation_timeout: 10.0,
     no_whisper_timeout: 3.0,
     success_screen_duration: 2.0,
     bg_whisper_min_wait: 0.5,
-    bg_whisper_max_wait: 3.0
+    bg_whisper_max_wait: 3.0,
+    voicing_threshold: 0.30,
+    min_record_duration: 0.6
   },
   texts: {
     initial_message_text: `DE FLUISTERWOLK\nomhult je met namen van dierbare overleden.\nWie mis jij?\nFluister deze naam terwijl je de knop ingedrukt houdt.\n\n\n\n\nTHE WHISPERING CLOUD\nsurrounds you with names of deceased beloved ones. \nWho are you missing? \nWhisper this name while you keep the button pressed.`,
