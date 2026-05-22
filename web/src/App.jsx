@@ -457,6 +457,12 @@ function App() {
     stopConfirmationLoop();
     setState("SUCCESS");
 
+    // Start timer immediately so UI does not hang if upload blocks/fails
+    const successDurationMs = (parseFloat(settings.calibration?.success_screen_duration) || 2.0) * 1000;
+    setTimeout(() => {
+      setState("IDLE");
+    }, successDurationMs);
+
     try {
       const fileName = `whisper_${Date.now()}.webm`;
       const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -482,11 +488,6 @@ function App() {
     } catch (e) {
       console.error("Save error:", e);
     }
-
-    const successDurationMs = (parseFloat(settings.calibration?.success_screen_duration) || 2.0) * 1000;
-    setTimeout(() => {
-      setState("IDLE");
-    }, successDurationMs);
   };
 
   const confirmDiscardWhisper = () => {
