@@ -109,6 +109,12 @@ const AutoScalingText = ({ text, color }) => {
 
 function App() {
   const [state, setState] = useState("IDLE"); // IDLE | RECORDING | CHECKING | CONFIRMATION | TOO_LOUD | RETRY | SUCCESS
+  const stateRef = useRef(state);
+  
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
   const [whispers, setWhispers] = useState([]);
   const [showAdmin, setShowAdmin] = useState(false);
   const [transcription, setTranscription] = useState("");
@@ -216,17 +222,30 @@ function App() {
   const startConfirmationLoop = (url) => {
     stopConfirmationLoop();
     
+    const loopObj = { intervalId: null, audio: null };
+    confirmationLoopRef.current = loopObj;
+
     const play = () => {
-      if (state !== "CONFIRMATION") return;
-      const audio = new Audio(url);
-      audio.volume = 0.85;
-      confirmationLoopRef.current = audio;
-      audio.play().catch(e => console.log("Confirm loop play blocked:", e));
+      if (stateRef.current !== "CONFIRMATION") {
+        stopConfirmationLoop();
+        return;
+      }
+      
+      try {
+        if (loopObj.audio) {
+          loopObj.audio.pause();
+        }
+        const audio = new Audio(url);
+        audio.volume = 0.85;
+        loopObj.audio = audio;
+        audio.play().catch(e => console.log("Confirm loop play blocked:", e));
+      } catch (err) {
+        console.error("Error playing whisper loop:", err);
+      }
     };
 
     play();
-    const intervalId = setInterval(play, 3000);
-    confirmationLoopRef.current = { intervalId };
+    loopObj.intervalId = setInterval(play, 3000);
   };
 
   const stopConfirmationLoop = () => {
@@ -234,9 +253,9 @@ function App() {
       if (confirmationLoopRef.current.intervalId) {
         clearInterval(confirmationLoopRef.current.intervalId);
       }
-      if (typeof confirmationLoopRef.current.pause === "function") {
+      if (confirmationLoopRef.current.audio) {
         try {
-          confirmationLoopRef.current.pause();
+          confirmationLoopRef.current.audio.pause();
         } catch (e) {}
       }
       confirmationLoopRef.current = null;
