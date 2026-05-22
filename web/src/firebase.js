@@ -3,14 +3,15 @@ import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, s
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 
-// DEFAULT PLACEHOLDER CONFIG
+// DEFAULT CONFIG
 const defaultFirebaseConfig = {
-  apiKey: "PLACEHOLDER_API_KEY",
-  authDomain: "PLACEHOLDER_AUTH_DOMAIN",
-  projectId: "PLACEHOLDER_PROJECT_ID",
-  storageBucket: "PLACEHOLDER_STORAGE_BUCKET",
-  messagingSenderId: "PLACEHOLDER_MESSAGING_SENDER_ID",
-  appId: "PLACEHOLDER_APP_ID"
+  apiKey: "AIzaSyACL17XUx2MIgGh5qjfoaRy8iCRYByR4ak",
+  authDomain: "fluisterwolk.firebaseapp.com",
+  projectId: "fluisterwolk",
+  storageBucket: "fluisterwolk.firebasestorage.app",
+  messagingSenderId: "981385480319",
+  appId: "1:981385480319:web:bd8ffdb0180ffbb669174a",
+  measurementId: "G-7WZ83V1N50"
 };
 
 // Load dynamic config override if present in localStorage
