@@ -1286,7 +1286,19 @@ const AdminPanel = ({ onClose }) => {
     }
     
     const audio = new Audio(whisper.audioUrl);
-    audio.volume = 1.0;
+    
+    const TARGET_RMS = 0.05;
+    const whisperRms = whisper.avgRms || 0.01;
+    const normalizationGain = TARGET_RMS / whisperRms;
+    const globalNorm = parseFloat(settings.calibration?.global_normalization) || 0.0;
+    const normMultiplier = 1.0 + (normalizationGain - 1.0) * globalNorm;
+    
+    const globalVol = parseFloat(settings.calibration?.global_volume) ?? 1.0;
+    const indVol = whisper.volumeMultiplier ?? 1.0;
+    
+    let finalVolume = 0.55 * normMultiplier * globalVol * indVol;
+    audio.volume = Math.max(0.0, Math.min(1.0, finalVolume));
+    
     setPlayingId(whisper.id);
     
     audio.play().catch(e => {
