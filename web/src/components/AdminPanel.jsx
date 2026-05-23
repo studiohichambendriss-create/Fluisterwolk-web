@@ -94,6 +94,7 @@ const AdminPanel = ({ onClose }) => {
   // Data States
   const [whispers, setWhispers] = useState([]);
   const [deletedWhispers, setDeletedWhispers] = useState([]);
+  const [selectedForDeletion, setSelectedForDeletion] = useState(new Set());
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const settingsRef = useRef(settings);
   const saveTimeoutRef = useRef(null);
@@ -1223,6 +1224,32 @@ const AdminPanel = ({ onClose }) => {
   };
 
   // Whisper actions
+  const handleBulkDelete = async () => {
+    if (selectedForDeletion.size === 0) return;
+    if (!window.confirm(`Weet u zeker dat u ${selectedForDeletion.size} fluistering(en) naar de prullenbak wilt verplaatsen?`)) return;
+
+    setActionMessage("Verplaatsen naar prullenbak...");
+    const whispersToDelete = whispers.filter(w => selectedForDeletion.has(w.id));
+    
+    for (const whisper of whispersToDelete) {
+      try {
+        await dbService.deleteWhisper(whisper);
+        setDeletedWhispers(prev => [
+          { ...whisper, deletedAt: new Date().toISOString() },
+          ...prev
+        ]);
+      } catch (e) {
+        console.error("Bulk delete error:", e);
+      }
+    }
+    
+    setWhispers(prev => prev.filter(w => !selectedForDeletion.has(w.id)));
+    setSelectedForDeletion(new Set());
+    
+    setActionMessage("Verplaatst.");
+    setTimeout(() => setActionMessage(""), 2000);
+  };
+
   const handleDelete = async (whisper) => {
     if (!window.confirm(`Weet u zeker dat u "${whisper.transcription}" naar de prullenbak wilt verplaatsen?`)) return;
 
@@ -1660,10 +1687,18 @@ const AdminPanel = ({ onClose }) => {
                 <section className="whispers-table-container">
                   <div className="whispers-table-header">
                     <h4 style={{ fontFamily: "var(--font-serif)", fontSize: "1.2rem", fontWeight: "600" }}>Geregistreerde Fluisteringen</h4>
-                    <button onClick={loadData} style={{ background: "none", border: "none", fontSize: "0.75rem", color: "var(--accent-color)", cursor: "pointer", fontWeight: "500", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <RefreshCw size={12} />
-                      <span>Vernieuw</span>
-                    </button>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      {selectedForDeletion.size > 0 && (
+                        <button onClick={handleBulkDelete} style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: "4px", padding: "6px 12px", fontSize: "0.8rem", color: "rgba(239, 68, 68, 0.9)", cursor: "pointer", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px", transition: "all 0.2s" }}>
+                          <Trash2 size={14} />
+                          <span>Verwijder Gemarkeerd ({selectedForDeletion.size})</span>
+                        </button>
+                      )}
+                      <button onClick={loadData} style={{ background: "none", border: "none", fontSize: "0.75rem", color: "var(--accent-color)", cursor: "pointer", fontWeight: "500", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <RefreshCw size={12} />
+                        <span>Vernieuw</span>
+                      </button>
+                    </div>
                   </div>
 
                   {isLoading ? (
@@ -1682,12 +1717,25 @@ const AdminPanel = ({ onClose }) => {
                             <th>Volume</th>
                             <th style={{ textAlign: "center" }}>Beluisteren</th>
                             <th style={{ textAlign: "right" }}>Verplaatsen</th>
+                            <th style={{ textAlign: "center", width: "40px" }}>
+                              <input 
+                                type="checkbox" 
+                                onChange={(e) => {
+                                  if (e.target.checked) setSelectedForDeletion(new Set(whispers.map(w => w.id)));
+                                  else setSelectedForDeletion(new Set());
+                                }}
+                                checked={whispers.length > 0 && selectedForDeletion.size === whispers.length}
+                                style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "rgba(239, 68, 68, 1)" }}
+                              />
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
                           {whispers.map((whisper) => {
                             let rowBg = "transparent";
-                            if (whisper.isSafe) {
+                            if (selectedForDeletion.has(whisper.id)) {
+                              rowBg = "rgba(236, 72, 153, 0.25)"; // Pink if marked for deletion
+                            } else if (whisper.isSafe) {
                               rowBg = "rgba(16, 185, 129, 0.15)"; // Green if manually marked safe
                             } else {
                               const classLevel = checkBadLanguage(whisper.transcription);
@@ -1757,6 +1805,19 @@ const AdminPanel = ({ onClose }) => {
                                 <button onClick={() => handleDelete(whisper)} style={{ background: "none", border: "none", padding: "6px", color: "rgba(239, 68, 68, 0.8)", cursor: "pointer" }}>
                                   <Trash2 size={14} />
                                 </button>
+                              </td>
+                              <td style={{ textAlign: "center" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedForDeletion.has(whisper.id)}
+                                  onChange={(e) => {
+                                    const newSet = new Set(selectedForDeletion);
+                                    if (e.target.checked) newSet.add(whisper.id);
+                                    else newSet.delete(whisper.id);
+                                    setSelectedForDeletion(newSet);
+                                  }}
+                                  style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "rgba(239, 68, 68, 1)" }}
+                                />
                               </td>
                             </tr>
                             );

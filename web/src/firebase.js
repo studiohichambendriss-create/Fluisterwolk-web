@@ -9,25 +9,121 @@ const RED_WORDS = [
   "kurwa", "puta", "kahba", "zemmer", "sharmuta", "suka", "bylat", "cunt", "whore", "slut", "faggot", 
   "fag", "chink", "spic", "pussy", "dick", "cock", "penis", "vagina", "porno", "sletje", "snol",
   "kkr", "nazi", "hitler", "kankerlijder", "klootzak", "motherfucker", "bastard", "schweinehund", 
-  "schweinhund", "fotze", "schlampe", "putain", "salope", "connard", "connasse"
+  "schweinhund", "fotze", "schlampe", "putain", "salope", "connard", "connasse", "encule",
+  "chuj", "jebac", "jebie", "pizda", "puto", "maricon", "cabron", "gilipollas", "amk", "sik",
+  "sikeyim", "pic", "orospu", "got", "siktir", "yarrak", "amcik", "kahpe", "sharmouta", "zab"
 ];
+
 const ORANGE_WORDS = [
   "shit", "verdomme", "dom", "stom", "idioot", "lul", "sukkel", "ass", "asshole", "bitchy", "crap",
   "damn", "goddamn", "bullshit", "jezus", "godverdomme", "debiel", "achterlijk", "scheisse", 
-  "arschloch", "merde"
+  "scheise", "arschloch", "merde", "chienne", "bordel", "lan", "salak"
 ];
 
-export const checkBadLanguage = (text) => {
-  if (!text || typeof text !== "string") return "none";
-  const lowerText = text.toLowerCase();
+const PHRASE_RED = [
+  "hijo de puta",
+  "puta madre",
+  "ego de put",
+  "ego de pui",
+  "poeta mad"
+];
+
+// Levenshtein Distance helper for smart fuzzy matching
+const getLevenshteinDistance = (a, b) => {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+};
+
+const isFuzzyMatch = (inputWord, targetWord) => {
+  const inLen = inputWord.length;
+  const tgLen = targetWord.length;
   
-  // Use regex word boundaries if possible, but basic includes works for fragments like "kkr"
-  for (const word of RED_WORDS) {
-    if (lowerText.includes(word)) return "red";
+  // Rule for longer words (allow distance 2 for words >= 6 chars, input must be >= 5 chars)
+  if (tgLen >= 6 && inLen >= 5) {
+    if (getLevenshteinDistance(inputWord, targetWord) <= 2) return true;
   }
-  for (const word of ORANGE_WORDS) {
-    if (lowerText.includes(word)) return "orange";
+  
+  // Rule for shorter words (allow distance 1 for words >= 4 chars, input must be >= 4 chars)
+  if (tgLen >= 4 && inLen >= 4) {
+    if (getLevenshteinDistance(inputWord, targetWord) <= 1) return true;
   }
+  
+  return false;
+};
+
+export const checkBadLanguage = (text) => {
+  // Empty, null, undefined or placeholder "(Geen tekst of onverstaanbaar)" -> ORANGE
+  if (!text || typeof text !== "string") return "orange";
+  
+  const trimmed = text.trim();
+  if (trimmed === "" || trimmed.toLowerCase().includes("geen tekst of onverstaanbaar")) {
+    return "orange";
+  }
+
+  // Normalize: lowercase, remove accents, remove punctuation
+  const normalized = trimmed
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ");
+
+  if (!normalized) return "orange";
+
+  // 1. Check known multi-word red phrases first
+  for (const phrase of PHRASE_RED) {
+    if (normalized.includes(phrase)) {
+      return "red";
+    }
+  }
+
+  // Split into words
+  const words = normalized.split(" ");
+
+  // 2. Perform word-by-word checking (exact and fuzzy)
+  let foundOrange = false;
+
+  for (const word of words) {
+    if (!word) continue;
+
+    // Exact matches first
+    if (RED_WORDS.includes(word)) return "red";
+    if (ORANGE_WORDS.includes(word)) foundOrange = true;
+
+    // Fuzzy matches (Levenshtein check)
+    for (const redWord of RED_WORDS) {
+      if (isFuzzyMatch(word, redWord)) return "red";
+    }
+
+    for (const orangeWord of ORANGE_WORDS) {
+      if (isFuzzyMatch(word, orangeWord)) {
+        foundOrange = true;
+      }
+    }
+  }
+
+  if (foundOrange) return "orange";
   return "none";
 };
 
