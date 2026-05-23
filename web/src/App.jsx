@@ -306,6 +306,7 @@ function App() {
   const playingBackgroundAudiosRef = useRef([]);
   const backgroundPlayTimerRef = useRef(null);
   const confirmationLoopRef = useRef(null);
+  const recentPlayedIdsRef = useRef([]);
 
   // Press control timing
   const isHoldingRef = useRef(false);
@@ -376,8 +377,21 @@ function App() {
     if (whispers.length === 0 || stateRef.current !== "IDLE" || showAdmin) return;
 
     try {
-      const randomIndex = Math.floor(Math.random() * whispers.length);
-      const whisper = whispers[randomIndex];
+      const maxHistory = Math.min(Math.max(3, Math.floor(whispers.length * 0.4)), Math.max(0, whispers.length - 1));
+      
+      let availableWhispers = whispers.filter(w => !recentPlayedIdsRef.current.includes(w.id));
+      if (availableWhispers.length === 0) {
+        availableWhispers = whispers;
+        recentPlayedIdsRef.current = [];
+      }
+
+      const randomIndex = Math.floor(Math.random() * availableWhispers.length);
+      const whisper = availableWhispers[randomIndex];
+      
+      recentPlayedIdsRef.current.push(whisper.id);
+      if (recentPlayedIdsRef.current.length > maxHistory) {
+        recentPlayedIdsRef.current.shift();
+      }
       
       const audio = new Audio(whisper.audioUrl);
       audio.volume = 0.55; // Soft volume for whispering
