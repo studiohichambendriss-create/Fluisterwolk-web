@@ -90,16 +90,21 @@ async function processAudioBlob(blob, minDuration) {
   const channelData = audioBuffer.getChannelData(0);
   const sourceSampleRate = audioBuffer.sampleRate;
   
-  // 1. Silence trimming (amplitude threshold 0.015)
+  // 1. Silence trimming (amplitude threshold 0.005)
   let startIndex = 0;
-  while (startIndex < channelData.length && Math.abs(channelData[startIndex]) < 0.015) {
+  while (startIndex < channelData.length && Math.abs(channelData[startIndex]) < 0.005) {
     startIndex++;
   }
   
   let endIndex = channelData.length - 1;
-  while (endIndex > startIndex && Math.abs(channelData[endIndex]) < 0.015) {
+  while (endIndex > startIndex && Math.abs(channelData[endIndex]) < 0.005) {
     endIndex--;
   }
+  
+  // Add 150ms padding to prevent cutting off breaths/tails
+  const paddingSamples = Math.floor(sourceSampleRate * 0.15);
+  startIndex = Math.max(0, startIndex - paddingSamples);
+  endIndex = Math.min(channelData.length - 1, endIndex + paddingSamples);
   
   if (startIndex >= endIndex) {
     startIndex = 0;
