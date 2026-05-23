@@ -510,13 +510,13 @@ const AdminPanel = ({ onClose }) => {
       frames: clip.frames
     }));
 
-    let bestAcc = -1;
-    let bestParams = null;
+    let maxAcc = -1;
+    let bestCombinations = [];
 
-    // Search parameter space
-    for (let silence = 0.002; silence <= 0.020; silence += 0.001) {
-      for (let ratio = 0.80; ratio <= 4.00; ratio += 0.10) {
-        for (let voicing = 0.15; voicing <= 0.45; voicing += 0.02) {
+    // Search parameter space (Matching UI sliders)
+    for (let silence = 0.001; silence <= 0.030; silence += 0.001) {
+      for (let ratio = 0.50; ratio <= 6.00; ratio += 0.10) {
+        for (let voicing = 0.05; voicing <= 0.80; voicing += 0.02) {
           
           let correctCount = 0;
           
@@ -560,15 +560,30 @@ const AdminPanel = ({ onClose }) => {
 
           const acc = correctCount / evaluatedClips.length;
           
-          if (acc > bestAcc) {
-            bestAcc = acc;
-            bestParams = { silence, ratio, voicing };
+          if (acc > maxAcc) {
+            maxAcc = acc;
+            bestCombinations = [{ silence, ratio, voicing }];
+          } else if (acc === maxAcc) {
+            bestCombinations.push({ silence, ratio, voicing });
           }
         }
       }
     }
 
-    if (bestParams) {
+    if (bestCombinations.length > 0) {
+      // Find the center of the acceptable parameter space for maximum robustness
+      let sumSilence = 0, sumRatio = 0, sumVoicing = 0;
+      for (const c of bestCombinations) {
+        sumSilence += c.silence;
+        sumRatio += c.ratio;
+        sumVoicing += c.voicing;
+      }
+      
+      const bestParams = {
+        silence: sumSilence / bestCombinations.length,
+        ratio: sumRatio / bestCombinations.length,
+        voicing: sumVoicing / bestCombinations.length
+      };
       const currentSettings = settingsRef.current;
       const finalSettings = {
         ...currentSettings,
