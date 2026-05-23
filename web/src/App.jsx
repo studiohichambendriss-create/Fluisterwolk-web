@@ -373,7 +373,7 @@ function App() {
   };
 
   const playRandomWhisper = () => {
-    if (whispers.length === 0 || state !== "IDLE" || showAdmin) return;
+    if (whispers.length === 0 || stateRef.current !== "IDLE" || showAdmin) return;
 
     try {
       const randomIndex = Math.floor(Math.random() * whispers.length);
@@ -411,34 +411,25 @@ function App() {
     playingBackgroundAudiosRef.current = [];
   };
 
-  // 3. Audio Confirmation Loop playback (loops every 3 seconds)
+  // 3. Audio Confirmation Loop playback (loops seamlessly)
   const startConfirmationLoop = (url) => {
     stopConfirmationLoop();
     
-    const loopObj = { intervalId: null, audio: null };
-    confirmationLoopRef.current = loopObj;
+    const audio = new Audio(url);
+    audio.volume = 0.85;
+    audio.loop = true;
+    
+    confirmationLoopRef.current = { intervalId: null, audio: audio };
 
     const play = () => {
       if (stateRef.current !== "CONFIRMATION") {
         stopConfirmationLoop();
         return;
       }
-      
-      try {
-        if (loopObj.audio) {
-          loopObj.audio.pause();
-        }
-        const audio = new Audio(url);
-        audio.volume = 0.85;
-        loopObj.audio = audio;
-        audio.play().catch(e => console.log("Confirm loop play blocked:", e));
-      } catch (err) {
-        console.error("Error playing whisper loop:", err);
-      }
+      audio.play().catch(e => console.log("Confirm loop play blocked:", e));
     };
 
     play();
-    loopObj.intervalId = setInterval(play, 3000);
   };
 
   const stopConfirmationLoop = () => {
