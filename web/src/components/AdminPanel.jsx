@@ -618,7 +618,7 @@ const AdminPanel = ({ onClose }) => {
       };
       setSettings(finalSettings);
       settingsService.saveSettings(finalSettings).then(() => {
-        console.log(`Auto-tweak optimized settings saved. Accuracy: ${Math.round(bestAcc * 100)}%`, bestParams);
+        console.log(`Auto-tweak optimized settings saved.`, bestParams);
       }).catch(err => {
         console.error("Auto-tweak failed to save settings:", err);
       });
