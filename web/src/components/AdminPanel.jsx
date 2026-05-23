@@ -576,20 +576,28 @@ const AdminPanel = ({ onClose }) => {
     }
 
     if (bestCombinations.length > 0) {
-      // Pick the single proven combination closest to the safe center defaults
-      // This prevents 'averaging' from falling into invalid gaps if clips overlap
-      const defaultSilence = 0.005;
-      const defaultRatio = 1.80;
-      const defaultVoicing = 0.30;
+      // Find the center of mass of all best combinations
+      let sumSilence = 0, sumRatio = 0, sumVoicing = 0;
+      for (const c of bestCombinations) {
+        sumSilence += c.silence;
+        sumRatio += c.ratio;
+        sumVoicing += c.voicing;
+      }
+      const centerSilence = sumSilence / bestCombinations.length;
+      const centerRatio = sumRatio / bestCombinations.length;
+      const centerVoicing = sumVoicing / bestCombinations.length;
       
+      // Pick the single proven combination closest to the center of mass.
+      // This guarantees we use a 100% accurate combination (avoiding disjoint union bugs),
+      // while maximizing the margin of error for all three parameters in the real world.
       let bestParams = bestCombinations[0];
       let minDistance = Infinity;
 
       for (const c of bestCombinations) {
-        // Normalize distance metrics
-        const dSilence = (c.silence - defaultSilence) / 0.030;
-        const dRatio = (c.ratio - defaultRatio) / 6.0;
-        const dVoicing = (c.voicing - defaultVoicing) / 0.80;
+        // Normalize distance metrics so parameters have equal weight
+        const dSilence = (c.silence - centerSilence) / 0.030;
+        const dRatio = (c.ratio - centerRatio) / 6.0;
+        const dVoicing = (c.voicing - centerVoicing) / 0.80;
         
         const distSq = (dSilence * dSilence) + (dRatio * dRatio) + (dVoicing * dVoicing);
         if (distSq < minDistance) {
