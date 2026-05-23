@@ -264,12 +264,13 @@ const AutoScalingText = ({ text, color }) => {
 };
 
 function App() {
-  const [state, setState] = useState("IDLE"); // IDLE | RECORDING | CHECKING | CONFIRMATION | TOO_LOUD | RETRY | SUCCESS
+  const [state, _setState] = useState("IDLE"); // IDLE | RECORDING | CHECKING | CONFIRMATION | TOO_LOUD | RETRY | SUCCESS
   const stateRef = useRef(state);
   
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+  const setState = (newState) => {
+    stateRef.current = newState;
+    _setState(newState);
+  };
 
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [whispers, setWhispers] = useState([]);
