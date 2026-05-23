@@ -1710,7 +1710,9 @@ const AdminPanel = ({ onClose }) => {
                                 />
                               </td>
                               <td style={{ fontSize: "0.75rem", color: "#888888", whiteSpace: "nowrap" }}>{whisper.timestamp}</td>
-                              <td style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "1.05rem", fontWeight: "500" }}>{whisper.transcription}</td>
+                              <td style={{ fontFamily: "var(--font-serif)", fontStyle: whisper.transcription ? "italic" : "normal", fontSize: "1.05rem", fontWeight: "500", color: whisper.transcription ? "inherit" : "#555" }}>
+                                {whisper.transcription || "(Geen tekst of onverstaanbaar)"}
+                              </td>
                               <td>
                                 <span style={{
                                   display: "inline-block", padding: "2px 8px", borderRadius: "12px", fontSize: "10px", fontWeight: "600", border: "1px solid",

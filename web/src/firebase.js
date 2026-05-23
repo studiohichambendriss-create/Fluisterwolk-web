@@ -3,20 +3,22 @@ import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, s
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "firebase/auth";
 
-// Bad Language Dictionary (Multi-language: Dutch, English, Turkish, Arabic slang, Polish, Spanish, etc)
+// Bad Language Dictionary (Multi-language: Dutch, English, Turkish, Arabic slang, Polish, Spanish, German, French, etc)
 const RED_WORDS = [
   "kanker", "hoer", "kut", "fuck", "bitch", "slet", "tering", "tyfus", "mongool", "nigger", "nigga",
   "kurwa", "puta", "kahba", "zemmer", "sharmuta", "suka", "bylat", "cunt", "whore", "slut", "faggot", 
   "fag", "chink", "spic", "pussy", "dick", "cock", "penis", "vagina", "porno", "sletje", "snol",
-  "kkr", "nazi", "hitler", "kankerlijder", "klootzak", "motherfucker", "bastard"
+  "kkr", "nazi", "hitler", "kankerlijder", "klootzak", "motherfucker", "bastard", "schweinehund", 
+  "schweinhund", "fotze", "schlampe", "putain", "salope", "connard", "connasse"
 ];
 const ORANGE_WORDS = [
   "shit", "verdomme", "dom", "stom", "idioot", "lul", "sukkel", "ass", "asshole", "bitchy", "crap",
-  "damn", "goddamn", "bullshit", "jezus", "godverdomme", "debiel", "achterlijk"
+  "damn", "goddamn", "bullshit", "jezus", "godverdomme", "debiel", "achterlijk", "scheisse", 
+  "arschloch", "merde"
 ];
 
 export const checkBadLanguage = (text) => {
-  if (!text) return "none";
+  if (!text || typeof text !== "string") return "none";
   const lowerText = text.toLowerCase();
   
   // Use regex word boundaries if possible, but basic includes works for fragments like "kkr"
