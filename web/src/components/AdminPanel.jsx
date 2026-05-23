@@ -1559,7 +1559,7 @@ const AdminPanel = ({ onClose }) => {
           </aside>
 
           {/* Active Tab View Area */}
-          <section style={{ flex: 1, padding: "40px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "24px" }}>
+          <section style={{ flex: 1, padding: "40px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "24px", minHeight: 0 }}>
             {actionMessage && (
               <div style={{ padding: "10px 20px", backgroundColor: "#1e1e1e", border: "1px solid rgba(255,255,255,0.1)", color: "#ffffff", fontSize: "0.75rem", borderRadius: "8px", display: "flex", alignItems: "center", gap: "8px", alignSelf: "flex-start" }}>
                 <CheckCircle size={14} style={{ color: "#10b981" }} />
