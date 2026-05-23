@@ -117,6 +117,11 @@ const AdminPanel = ({ onClose }) => {
         url: URL.createObjectURL(c.blob)
       }));
       setSandboxClips(loaded);
+      
+      // Auto-recalculate optimal thresholds based on loaded clips
+      if (loaded.length > 0) {
+        setTimeout(() => optimizeThresholds(loaded), 500);
+      }
     }).catch(e => console.error("Failed to load sandbox clips:", e));
   }, []);
 
