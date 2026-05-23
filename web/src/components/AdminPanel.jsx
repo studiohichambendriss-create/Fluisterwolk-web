@@ -33,7 +33,7 @@ function getVoicingPeriodicity(timeArray, sampleRate) {
     samples[i] -= mean;
   }
 
-  const checkLength = 256;
+  const checkLength = 512;
   let energy0 = 0;
   for (let i = 0; i < checkLength; i++) {
     energy0 += samples[i] * samples[i];
@@ -201,16 +201,23 @@ const AdminPanel = ({ onClose }) => {
                     const recommendedRatio = Math.max(1.00, Math.min(4.50, avgWhisperRatio * 0.75));
                     const recommendedVoicing = 0.28; // Standard voice pitch boundary
 
-                    // Update Settings state
-                    setSettings(prev => ({
-                      ...prev,
+                    // Update Settings state and save immediately to database to prevent loss!
+                    const currentSettings = settingsRef.current;
+                    const finalSettings = {
+                      ...currentSettings,
                       calibration: {
-                        ...prev.calibration,
+                        ...currentSettings.calibration,
                         silence_threshold: recommendedSilence,
                         whisper_ratio_threshold: recommendedRatio,
                         voicing_threshold: recommendedVoicing
                       }
-                    }));
+                    };
+                    setSettings(finalSettings);
+                    settingsService.saveSettings(finalSettings).then(() => {
+                      console.log("Wizard successfully saved settings to Firestore.");
+                    }).catch(e => {
+                      console.error("Wizard failed to save settings to Firestore:", e);
+                    });
 
                     // Save the ambient results to running noise floor refs directly
                     lowNoiseFloorRef.current = ambientResults.low;
@@ -246,9 +253,13 @@ const AdminPanel = ({ onClose }) => {
 
       const src = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 1024;
+      analyser.fftSize = 2048; // Increased from 1024 for highly precise voicing detection
       src.connect(analyser);
       liveAnalyserRef.current = analyser;
+
+      let smoothedRMS = 0;
+      let smoothedVoicing = 0;
+      let smoothedRatio = 1.0;
 
       const update = () => {
         if (!liveAnalyserRef.current) return;
@@ -262,7 +273,10 @@ const AdminPanel = ({ onClose }) => {
           sum += val * val;
         }
         const rms = Math.sqrt(sum / timeArray.length);
-        setLiveVolume(rms);
+
+        // Leaky integration smoothing for RMS
+        smoothedRMS = smoothedRMS * 0.85 + rms * 0.15;
+        setLiveVolume(smoothedRMS);
 
         // 2. Calculate Whisper Frequency Ratio
         const freqArray = new Uint8Array(liveAnalyserRef.current.frequencyBinCount);
@@ -304,12 +318,12 @@ const AdminPanel = ({ onClose }) => {
           ? parseFloat(settingsRef.current.calibration.whisper_ratio_threshold)
           : 1.80;
 
-        const isSilenceFrame = rms < silenceThreshold;
+        const isSilenceFrame = smoothedRMS < silenceThreshold;
 
         // Leaky Noise Floor adaptation
         if (isSilenceFrame) {
-          lowNoiseFloorRef.current = lowNoiseFloorRef.current * 0.9 + lowAvg * 0.1;
-          highNoiseFloorRef.current = highNoiseFloorRef.current * 0.9 + highAvg * 0.1;
+          lowNoiseFloorRef.current = lowNoiseFloorRef.current * 0.95 + lowAvg * 0.05;
+          highNoiseFloorRef.current = highNoiseFloorRef.current * 0.95 + highAvg * 0.05;
         } else {
           if (lowAvg < lowNoiseFloorRef.current) {
             lowNoiseFloorRef.current = lowNoiseFloorRef.current * 0.9 + lowAvg * 0.1;
@@ -329,6 +343,10 @@ const AdminPanel = ({ onClose }) => {
         const activeRatio = highSignal / lowSignal;
 
         const voicing = getVoicingPeriodicity(timeArray, sampleRate);
+
+        // Smooth active ratio and voicing to eliminate jittering!
+        smoothedRatio = smoothedRatio * 0.75 + activeRatio * 0.25;
+        smoothedVoicing = smoothedVoicing * 0.75 + voicing * 0.25;
 
         setLiveLowAvgState(lowAvg);
         setLiveHighAvgState(highAvg);
@@ -354,12 +372,12 @@ const AdminPanel = ({ onClose }) => {
 
         let status = "silence";
 
-        if (rms >= silenceThreshold) {
-          setLiveRatio(activeRatio);
-          setLiveVoicing(voicing);
+        if (smoothedRMS >= silenceThreshold) {
+          setLiveRatio(smoothedRatio);
+          setLiveVoicing(smoothedVoicing);
 
-          const isVoiced = voicing >= voicingThreshold;
-          const isWhisper = !isVoiced && activeRatio >= whisperRatioThreshold;
+          const isVoiced = smoothedVoicing >= voicingThreshold;
+          const isWhisper = !isVoiced && smoothedRatio >= whisperRatioThreshold;
 
           if (isVoiced) {
             status = "normal";

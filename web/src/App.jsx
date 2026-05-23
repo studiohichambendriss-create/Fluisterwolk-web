@@ -22,7 +22,7 @@ function getVoicingPeriodicity(timeArray, sampleRate) {
     samples[i] -= mean;
   }
 
-  const checkLength = 256;
+  const checkLength = 512;
   let energy0 = 0;
   for (let i = 0; i < checkLength; i++) {
     energy0 += samples[i] * samples[i];
@@ -576,7 +576,7 @@ function App() {
 
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 1024;
+      analyser.fftSize = 2048; // Upgraded from 1024 for highly precise voicing detection
       source.connect(analyser);
       analyserRef.current = analyser;
 
