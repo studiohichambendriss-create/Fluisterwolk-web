@@ -1596,6 +1596,7 @@ const AdminPanel = ({ onClose }) => {
                             <th>Tijdstip</th>
                             <th>Naam / Tekst</th>
                             <th>Type</th>
+                            <th>Volume</th>
                             <th style={{ textAlign: "center" }}>Beluisteren</th>
                             <th style={{ textAlign: "right" }}>Verplaatsen</th>
                           </tr>
@@ -1614,6 +1615,24 @@ const AdminPanel = ({ onClose }) => {
                                 }}>
                                   {whisper.speechType === "whisper" ? "Fluister" : "Spreken"}
                                 </span>
+                              </td>
+                              <td style={{ display: "flex", alignItems: "center", gap: "8px", paddingTop: "12px" }}>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="2"
+                                  step="0.05"
+                                  value={whisper.volumeMultiplier ?? 1.0}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value);
+                                    setWhispers(prev => prev.map(w => w.id === whisper.id ? { ...w, volumeMultiplier: val } : w));
+                                  }}
+                                  onPointerUp={(e) => {
+                                    dbService.updateWhisperVolume(whisper.id, parseFloat(e.target.value));
+                                  }}
+                                  style={{ width: "80px", cursor: "pointer", margin: 0 }}
+                                />
+                                <span style={{ fontSize: "10px", color: "#888888" }}>{Math.round((whisper.volumeMultiplier ?? 1.0) * 100)}%</span>
                               </td>
                               <td style={{ textAlign: "center" }}>
                                 <button
@@ -2429,6 +2448,60 @@ const AdminPanel = ({ onClose }) => {
                     </div>
                     <span style={{ fontSize: "0.7rem", color: "#888888" }}>
                       Minimum volume (RMS) dat nodig is om geluid te registreren. Alles hieronder wordt genegeerd als stilte.
+                    </span>
+                  </div>
+
+                  {/* Globale Volume Slider */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <label style={{ fontSize: "0.75rem", color: "#888888", fontWeight: "600" }}>GLOBALE VOLUME (%)</label>
+                    <div style={{ position: "relative", width: "100%" }}>
+                      <input 
+                        type="range" 
+                        min="0.0" 
+                        max="2.0" 
+                        step="0.05"
+                        value={settings.calibration?.global_volume ?? 1.0}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          calibration: {
+                            ...prev.calibration,
+                            global_volume: parseFloat(e.target.value)
+                          }
+                        }))}
+                        onPointerUp={() => settingsService.saveSettings(settings)}
+                        style={{ cursor: "pointer", width: "100%", margin: 0 }}
+                      />
+                    </div>
+                    <span style={{ fontSize: "0.7rem", color: "#888888", display: "flex", justifyContent: "space-between" }}>
+                      <span>Algemene volume multiplier voor alle opnames.</span>
+                      <span>{Math.round((settings.calibration?.global_volume ?? 1.0) * 100)}%</span>
+                    </span>
+                  </div>
+
+                  {/* Globale Normalisatie Slider */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <label style={{ fontSize: "0.75rem", color: "#888888", fontWeight: "600" }}>GLOBALE NORMALISATIE (%)</label>
+                    <div style={{ position: "relative", width: "100%" }}>
+                      <input 
+                        type="range" 
+                        min="0.0" 
+                        max="1.0" 
+                        step="0.05"
+                        value={settings.calibration?.global_normalization ?? 0.0}
+                        onChange={(e) => setSettings(prev => ({
+                          ...prev,
+                          calibration: {
+                            ...prev.calibration,
+                            global_normalization: parseFloat(e.target.value)
+                          }
+                        }))}
+                        onPointerUp={() => settingsService.saveSettings(settings)}
+                        style={{ cursor: "pointer", width: "100%", margin: 0 }}
+                      />
+                    </div>
+                    <span style={{ fontSize: "0.7rem", color: "#888888", display: "flex", justifyContent: "space-between" }}>
+                      <span>Hoe sterk zachte en harde opnames gelijk worden getrokken.</span>
+                      <span>{Math.round((settings.calibration?.global_normalization ?? 0.0) * 100)}%</span>
                     </span>
                   </div>
 

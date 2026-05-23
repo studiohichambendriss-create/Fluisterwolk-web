@@ -315,6 +315,7 @@ function App() {
   const stopRequestedRef = useRef(false);
   const recordingStartTimeRef = useRef(null);
   const ignoreOnStopRef = useRef(false);
+  const lastRecordedRmsRef = useRef(null);
 
   const loadDynamicSettings = async () => {
     try {
@@ -394,7 +395,21 @@ function App() {
       }
       
       const audio = new Audio(whisper.audioUrl);
-      audio.volume = 0.55; // Soft volume for whispering
+      
+      const TARGET_RMS = 0.05; // Base target for normalization
+      const whisperRms = whisper.avgRms || 0.01;
+      const normalizationGain = TARGET_RMS / whisperRms;
+      const globalNorm = parseFloat(settings.calibration?.global_normalization) || 0.0;
+      const normMultiplier = 1.0 + (normalizationGain - 1.0) * globalNorm;
+      
+      const globalVol = parseFloat(settings.calibration?.global_volume) ?? 1.0;
+      const indVol = whisper.volumeMultiplier ?? 1.0;
+      
+      let finalVolume = 0.55 * normMultiplier * globalVol * indVol;
+      // Clamp between 0.0 and 1.0
+      finalVolume = Math.max(0.0, Math.min(1.0, finalVolume));
+      
+      audio.volume = finalVolume;
       playingBackgroundAudiosRef.current.push(audio);
 
       audio.play().catch(e => {
@@ -785,6 +800,8 @@ function App() {
     const avgRms = slicedRms.reduce((a, b) => a + b, 0) / (slicedRms.length || 1);
     const avgVoicing = activeFrameCount > 0 ? (activeVoicingSum / activeFrameCount) : 0;
     const avgActiveRatio = activeFrameCount > 0 ? (activeRatioSum / activeFrameCount) : 1.0;
+    
+    lastRecordedRmsRef.current = avgRms;
 
     const isSilence = avgRms < SILENCE_THRESHOLD;
     const isVoiced = !isSilence && avgVoicing >= VOICING_THRESHOLD;
@@ -876,7 +893,9 @@ Resultaat: ${classification}
         confidence: 95.0,
         speechType: "whisper",
         timestamp: timestamp,
-        audioUrl: audioUrl
+        audioUrl: audioUrl,
+        avgRms: lastRecordedRmsRef.current || 0.01,
+        volumeMultiplier: 1.0
       };
 
       const savedId = await dbService.addWhisper(newEntry);

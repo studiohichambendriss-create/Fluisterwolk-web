@@ -229,6 +229,28 @@ export const dbService = {
     return true;
   },
 
+  // Update whisper volume multiplier
+  updateWhisperVolume: async (id, volumeMultiplier) => {
+    if (!isMockMode && db) {
+      try {
+        await updateDoc(doc(db, "whispers", id), { volumeMultiplier });
+        return true;
+      } catch (e) {
+        console.error("Firestore error in updateWhisperVolume:", e);
+        throw e;
+      }
+    }
+    
+    // Mock mode update
+    let mockList = getMockWhispers();
+    const index = mockList.findIndex(item => item.id === id);
+    if (index !== -1) {
+      mockList[index].volumeMultiplier = volumeMultiplier;
+      saveMockWhispers(mockList);
+    }
+    return true;
+  },
+
   // Real-time subscription to active whispers
   subscribeWhispers: (onUpdate, onError) => {
     if (!isMockMode && db) {
@@ -392,7 +414,9 @@ export const DEFAULT_SETTINGS = {
     bg_whisper_min_wait: 0.5,
     bg_whisper_max_wait: 3.0,
     voicing_threshold: 0.30,
-    min_record_duration: 0.6
+    min_record_duration: 0.6,
+    global_volume: 1.0,
+    global_normalization: 0.0
   },
   texts: {
     initial_message_text: `DE FLUISTERWOLK\nomhult je met namen van dierbare overleden.\nWie mis jij?\nFluister deze naam terwijl je de knop ingedrukt houdt.\n\n\n\n\nTHE WHISPERING CLOUD\nsurrounds you with names of deceased beloved ones. \nWho are you missing? \nWhisper this name while you keep the button pressed.`,
