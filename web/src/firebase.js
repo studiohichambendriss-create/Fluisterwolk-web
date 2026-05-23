@@ -420,6 +420,7 @@ export const DEFAULT_SETTINGS = {
 
 export const settingsService = {
   getSettings: async () => {
+    console.log("settingsService.getSettings() called.");
     if (!isMockMode && db) {
       try {
         const querySnapshot = await getDocs(collection(db, "settings"));
@@ -429,7 +430,10 @@ export const settingsService = {
             docData = doc.data();
           }
         });
-        if (docData) return docData;
+        if (docData) {
+          console.log("Settings successfully loaded from FIRESTORE:", docData.calibration);
+          return docData;
+        }
       } catch (e) {
         console.error("Firestore settings load error:", e);
       }
@@ -438,24 +442,34 @@ export const settingsService = {
     const local = localStorage.getItem("fluisterwolk_settings_v3");
     if (local) {
       try {
-        return JSON.parse(local);
+        const parsed = JSON.parse(local);
+        console.log("Settings successfully loaded from LOCALSTORAGE:", parsed.calibration);
+        return parsed;
       } catch (e) {
         console.error(e);
       }
     }
+    console.log("No settings found. Using DEFAULT_SETTINGS:", DEFAULT_SETTINGS.calibration);
     return DEFAULT_SETTINGS;
   },
 
   saveSettings: async (settingsData) => {
+    console.log("settingsService.saveSettings() called with:", settingsData.calibration);
+    let firestoreSuccess = false;
     if (!isMockMode && db) {
       try {
         await setDoc(doc(db, "settings", "global"), settingsData);
-        console.log("Firestore settings saved.");
+        console.log("Settings successfully SAVED to FIRESTORE.");
+        firestoreSuccess = true;
       } catch (e) {
         console.error("Firestore settings save error:", e);
       }
     }
     localStorage.setItem("fluisterwolk_settings_v3", JSON.stringify(settingsData));
+    console.log("Settings successfully SAVED to LOCALSTORAGE.");
+    if (!firestoreSuccess && !isMockMode) {
+      console.warn("WARNING: Saved to localStorage but FIRESTORE SAVE FAILED! Settings will desync across devices and on reload if Firestore read succeeds.");
+    }
     return true;
   }
 };
