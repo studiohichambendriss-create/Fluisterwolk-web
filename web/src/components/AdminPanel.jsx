@@ -1575,6 +1575,66 @@ const AdminPanel = ({ onClose }) => {
                   </div>
                 </section>
 
+                <section className="kpi-row" style={{ marginTop: "16px" }}>
+                  {/* Globale Volume Slider */}
+                  <div className="kpi-card" style={{ flex: 1 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      <label style={{ fontSize: "0.75rem", color: "#888888", fontWeight: "600" }}>GLOBALE VOLUME (%)</label>
+                      <div style={{ position: "relative", width: "100%" }}>
+                        <input 
+                          type="range" 
+                          min="0.0" 
+                          max="2.0" 
+                          step="0.05"
+                          value={settings.calibration?.global_volume ?? 1.0}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            calibration: {
+                              ...prev.calibration,
+                              global_volume: parseFloat(e.target.value)
+                            }
+                          }))}
+                          onPointerUp={() => settingsService.saveSettings(settings)}
+                          style={{ cursor: "pointer", width: "100%", margin: 0 }}
+                        />
+                      </div>
+                      <span style={{ fontSize: "0.7rem", color: "#888888", display: "flex", justifyContent: "space-between" }}>
+                        <span>Algemene volume multiplier.</span>
+                        <span>{Math.round((settings.calibration?.global_volume ?? 1.0) * 100)}%</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Globale Normalisatie Slider */}
+                  <div className="kpi-card" style={{ flex: 1 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      <label style={{ fontSize: "0.75rem", color: "#888888", fontWeight: "600" }}>GLOBALE NORMALISATIE (%)</label>
+                      <div style={{ position: "relative", width: "100%" }}>
+                        <input 
+                          type="range" 
+                          min="0.0" 
+                          max="1.0" 
+                          step="0.05"
+                          value={settings.calibration?.global_normalization ?? 0.0}
+                          onChange={(e) => setSettings(prev => ({
+                            ...prev,
+                            calibration: {
+                              ...prev.calibration,
+                              global_normalization: parseFloat(e.target.value)
+                            }
+                          }))}
+                          onPointerUp={() => settingsService.saveSettings(settings)}
+                          style={{ cursor: "pointer", width: "100%", margin: 0 }}
+                        />
+                      </div>
+                      <span style={{ fontSize: "0.7rem", color: "#888888", display: "flex", justifyContent: "space-between" }}>
+                        <span>Zachte en harde opnames gelijk trekken.</span>
+                        <span>{Math.round((settings.calibration?.global_normalization ?? 0.0) * 100)}%</span>
+                      </span>
+                    </div>
+                  </div>
+                </section>
+
                 <section className="whispers-table-container">
                   <div className="whispers-table-header">
                     <h4 style={{ fontFamily: "var(--font-serif)", fontSize: "1.2rem", fontWeight: "600" }}>Geregistreerde Fluisteringen</h4>
@@ -2448,60 +2508,6 @@ const AdminPanel = ({ onClose }) => {
                     </div>
                     <span style={{ fontSize: "0.7rem", color: "#888888" }}>
                       Minimum volume (RMS) dat nodig is om geluid te registreren. Alles hieronder wordt genegeerd als stilte.
-                    </span>
-                  </div>
-
-                  {/* Globale Volume Slider */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    <label style={{ fontSize: "0.75rem", color: "#888888", fontWeight: "600" }}>GLOBALE VOLUME (%)</label>
-                    <div style={{ position: "relative", width: "100%" }}>
-                      <input 
-                        type="range" 
-                        min="0.0" 
-                        max="2.0" 
-                        step="0.05"
-                        value={settings.calibration?.global_volume ?? 1.0}
-                        onChange={(e) => setSettings(prev => ({
-                          ...prev,
-                          calibration: {
-                            ...prev.calibration,
-                            global_volume: parseFloat(e.target.value)
-                          }
-                        }))}
-                        onPointerUp={() => settingsService.saveSettings(settings)}
-                        style={{ cursor: "pointer", width: "100%", margin: 0 }}
-                      />
-                    </div>
-                    <span style={{ fontSize: "0.7rem", color: "#888888", display: "flex", justifyContent: "space-between" }}>
-                      <span>Algemene volume multiplier voor alle opnames.</span>
-                      <span>{Math.round((settings.calibration?.global_volume ?? 1.0) * 100)}%</span>
-                    </span>
-                  </div>
-
-                  {/* Globale Normalisatie Slider */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    <label style={{ fontSize: "0.75rem", color: "#888888", fontWeight: "600" }}>GLOBALE NORMALISATIE (%)</label>
-                    <div style={{ position: "relative", width: "100%" }}>
-                      <input 
-                        type="range" 
-                        min="0.0" 
-                        max="1.0" 
-                        step="0.05"
-                        value={settings.calibration?.global_normalization ?? 0.0}
-                        onChange={(e) => setSettings(prev => ({
-                          ...prev,
-                          calibration: {
-                            ...prev.calibration,
-                            global_normalization: parseFloat(e.target.value)
-                          }
-                        }))}
-                        onPointerUp={() => settingsService.saveSettings(settings)}
-                        style={{ cursor: "pointer", width: "100%", margin: 0 }}
-                      />
-                    </div>
-                    <span style={{ fontSize: "0.7rem", color: "#888888", display: "flex", justifyContent: "space-between" }}>
-                      <span>Hoe sterk zachte en harde opnames gelijk worden getrokken.</span>
-                      <span>{Math.round((settings.calibration?.global_normalization ?? 0.0) * 100)}%</span>
                     </span>
                   </div>
 
