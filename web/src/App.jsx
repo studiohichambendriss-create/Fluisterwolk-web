@@ -912,7 +912,7 @@ Resultaat: ${classification}
       // 2. Upload metadata to Firestore
       const newEntry = {
         filename: fileName,
-        transcription: transcription.trim() || "Onbekende Naam",
+        transcription: transcription.trim(),
         confidence: 95.0,
         speechType: "whisper",
         timestamp: timestamp,
