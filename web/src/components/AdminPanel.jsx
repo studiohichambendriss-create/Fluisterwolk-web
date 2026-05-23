@@ -134,10 +134,427 @@ const AdminPanel = ({ onClose }) => {
   const calibSamplesRef = useRef([]);
   const calibIntervalsRef = useRef([]);
 
+  // Sandbox Clip States & Refs
+  const [sandboxClips, setSandboxClips] = useState([]);
+  const [recordingCategory, setRecordingCategoryState] = useState("");
+  const [recordingCountdown, setRecordingCountdown] = useState(0);
+  const recordingCategoryRef = useRef("");
+  const recordingFramesRef = useRef([]);
+  const isPlaybackActiveRef = useRef(false);
+  const playbackIntervalRef = useRef(null);
+  const playbackAudioRef = useRef(null);
+
+  const setRecordingCategory = (cat) => {
+    recordingCategoryRef.current = cat;
+    setRecordingCategoryState(cat);
+  };
+
   const clearAllCalibIntervals = () => {
     calibIntervalsRef.current.forEach(timer => clearInterval(timer));
     calibIntervalsRef.current = [];
   };
+
+  // Shared visualizer drawer function
+  const drawSpectrogramFrame = (canvas, freqArray, timeArray, rms, lowAvg, highAvg, activeRatio, voicing) => {
+    const canvasCtx = canvas.getContext("2d");
+    if (!canvasCtx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Draw dark background with rounded corners
+    canvasCtx.fillStyle = "rgba(18, 18, 18, 0.95)";
+    canvasCtx.fillRect(0, 0, w, h);
+
+    // Subtle vertical background grid lines (every 1000Hz up to 5000Hz)
+    canvasCtx.strokeStyle = "rgba(255, 255, 255, 0.03)";
+    canvasCtx.lineWidth = 1;
+    for (let hz = 1000; hz <= 5000; hz += 1000) {
+      const gridX = (hz / 6000) * w;
+      canvasCtx.beginPath();
+      canvasCtx.moveTo(gridX, 0);
+      canvasCtx.lineTo(gridX, h);
+      canvasCtx.stroke();
+    }
+
+    // Draw low frequency region highlighted (80Hz - 400Hz)
+    const xLowStart = (80 / 6000) * w;
+    const xLowEnd = (400 / 6000) * w;
+    canvasCtx.fillStyle = "rgba(239, 68, 68, 0.08)"; // Coral/Red tint
+    canvasCtx.fillRect(xLowStart, 0, xLowEnd - xLowStart, h);
+
+    // Draw high frequency region highlighted (600Hz - 4000Hz)
+    const xHighStart = (600 / 6000) * w;
+    const xHighEnd = (4000 / 6000) * w;
+    canvasCtx.fillStyle = "rgba(16, 185, 129, 0.08)"; // Emerald/Green tint
+    canvasCtx.fillRect(xHighStart, 0, xHighEnd - xHighStart, h);
+
+    // Draw noise floor dashed lines in low & high regions
+    canvasCtx.setLineDash([4, 4]);
+    const yLowNoise = h - ((lowNoiseFloorRef.current || 5) / 255) * (h - 24) - 2;
+    canvasCtx.strokeStyle = "rgba(239, 68, 68, 0.4)";
+    canvasCtx.lineWidth = 1.5;
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(xLowStart, yLowNoise);
+    canvasCtx.lineTo(xLowEnd, yLowNoise);
+    canvasCtx.stroke();
+
+    const yHighNoise = h - ((highNoiseFloorRef.current || 5) / 255) * (h - 24) - 2;
+    canvasCtx.strokeStyle = "rgba(16, 185, 129, 0.4)";
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(xHighStart, yHighNoise);
+    canvasCtx.lineTo(xHighEnd, yHighNoise);
+    canvasCtx.stroke();
+    canvasCtx.setLineDash([]);
+
+    // Dashed borders for low & high regions
+    canvasCtx.strokeStyle = "rgba(239, 68, 68, 0.25)";
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(xLowStart, 0); canvasCtx.lineTo(xLowStart, h);
+    canvasCtx.moveTo(xLowEnd, 0); canvasCtx.lineTo(xLowEnd, h);
+    canvasCtx.stroke();
+
+    canvasCtx.strokeStyle = "rgba(16, 185, 129, 0.25)";
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(xHighStart, 0); canvasCtx.lineTo(xHighStart, h);
+    canvasCtx.moveTo(xHighEnd, 0); canvasCtx.lineTo(xHighEnd, h);
+    canvasCtx.stroke();
+
+    // Draw region text labels at the top
+    canvasCtx.font = "bold 9px Outfit, sans-serif";
+    canvasCtx.fillStyle = "rgba(239, 68, 68, 0.75)";
+    canvasCtx.fillText(`STEM PITCH (80-400Hz) - Ruis: ${Math.round(lowNoiseFloorRef.current)}`, xLowStart + 2, 14);
+
+    canvasCtx.fillStyle = "rgba(16, 185, 129, 0.75)";
+    canvasCtx.fillText(`FLUISTER BEREIK (600-4000Hz) - Ruis: ${Math.round(highNoiseFloorRef.current)}`, xHighStart + 4, 14);
+
+    // Plot frequency spectrum path
+    const sampleRate = (liveAudioCtxRef.current?.sampleRate || 44100);
+    const binResolution = sampleRate / (freqArray.length * 2);
+    const gradient = canvasCtx.createLinearGradient(0, h, 0, 0);
+    gradient.addColorStop(0, "rgba(99, 102, 241, 0.02)"); 
+    gradient.addColorStop(0.5, "rgba(99, 102, 241, 0.12)");
+    gradient.addColorStop(1, "rgba(6, 182, 212, 0.45)"); // Neon cyan at peak
+
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(0, h);
+
+    for (let x = 0; x <= w; x++) {
+      const f = (x / w) * 6000;
+      const binFloat = f / binResolution;
+      const binLow = Math.floor(binFloat);
+      const binHigh = Math.min(freqArray.length - 1, binLow + 1);
+      const weight = binFloat - binLow;
+
+      const valLow = freqArray[binLow] || 0;
+      const valHigh = freqArray[binHigh] || 0;
+      const val = (1 - weight) * valLow + weight * valHigh;
+
+      const y = h - (val / 255) * (h - 24) - 2;
+      canvasCtx.lineTo(x, y);
+    }
+    canvasCtx.lineTo(w, h);
+    canvasCtx.closePath();
+    canvasCtx.fillStyle = gradient;
+    canvasCtx.fill();
+
+    // Draw curve line
+    canvasCtx.beginPath();
+    for (let x = 0; x <= w; x++) {
+      const f = (x / w) * 6000;
+      const binFloat = f / binResolution;
+      const binLow = Math.floor(binFloat);
+      const binHigh = Math.min(freqArray.length - 1, binLow + 1);
+      const weight = binFloat - binLow;
+
+      const valLow = freqArray[binLow] || 0;
+      const valHigh = freqArray[binHigh] || 0;
+      const val = (1 - weight) * valLow + weight * valHigh;
+
+      const y = h - (val / 255) * (h - 24) - 2;
+      if (x === 0) canvasCtx.moveTo(x, y);
+      else canvasCtx.lineTo(x, y);
+    }
+    canvasCtx.strokeStyle = "rgba(6, 182, 212, 0.85)"; // Glowing cyan curve
+    canvasCtx.lineWidth = 1.5;
+    canvasCtx.stroke();
+  };
+
+  const handleRecordSandboxClip = (category) => {
+    if (!liveStreamRef.current) {
+      console.warn("Live stream not active!");
+      return;
+    }
+
+    clearAllCalibIntervals();
+    if (playbackAudioRef.current) {
+      playbackAudioRef.current.pause();
+      playbackAudioRef.current = null;
+    }
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current);
+      playbackIntervalRef.current = null;
+    }
+    isPlaybackActiveRef.current = false;
+
+    setRecordingCategory(category);
+    setRecordingCountdown(2);
+    recordingFramesRef.current = [];
+
+    // Start audio recorder
+    const rec = new MediaRecorder(liveStreamRef.current);
+    const chunks = [];
+    rec.ondataavailable = e => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+
+    rec.onstop = () => {
+      const blob = new Blob(chunks, { type: "audio/webm" });
+      const url = URL.createObjectURL(blob);
+
+      const newClip = {
+        id: `sandbox_${Date.now()}`,
+        category,
+        url,
+        frames: [...recordingFramesRef.current]
+      };
+
+      setSandboxClips(prev => {
+        const next = [...prev, newClip];
+        // Automatically optimize parameters whenever a new clip is recorded!
+        setTimeout(() => optimizeThresholds(next), 100);
+        return next;
+      });
+
+      setRecordingCategory("");
+      setRecordingCountdown(0);
+    };
+
+    rec.start();
+
+    // 2-second countdown
+    let left = 2;
+    const interval = setInterval(() => {
+      left--;
+      if (left > 0) {
+        setRecordingCountdown(left);
+      } else {
+        clearInterval(interval);
+        rec.stop();
+      }
+    }, 1000);
+
+    calibIntervalsRef.current.push(interval);
+  };
+
+  const handlePlaySandboxClip = (clip) => {
+    // 1. Stop any active playback
+    if (playbackAudioRef.current) {
+      playbackAudioRef.current.pause();
+      playbackAudioRef.current = null;
+    }
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current);
+      playbackIntervalRef.current = null;
+    }
+
+    // 2. Set playback active
+    isPlaybackActiveRef.current = true;
+    
+    // 3. Play audio
+    const audio = new Audio(clip.url);
+    playbackAudioRef.current = audio;
+    audio.play().catch(e => console.warn("Playback block:", e));
+
+    // 4. Feed frames to live visuals at the original interval rate (e.g. ~30ms per frame)
+    let frameIdx = 0;
+    const totalFrames = clip.frames.length;
+    if (totalFrames === 0) {
+      isPlaybackActiveRef.current = false;
+      return;
+    }
+
+    const frameRateMs = 2000 / totalFrames; // Clip is exactly 2 seconds long!
+
+    playbackIntervalRef.current = setInterval(() => {
+      if (frameIdx >= totalFrames) {
+        clearInterval(playbackIntervalRef.current);
+        isPlaybackActiveRef.current = false;
+        playbackIntervalRef.current = null;
+        playbackAudioRef.current = null;
+        return;
+      }
+
+      const frame = clip.frames[frameIdx];
+      
+      // Update telemetry states so HUD & Sliders bounce during playback!
+      setLiveVolume(frame.rms);
+      setLiveRatio(frame.ratio);
+      setLiveVoicing(frame.voicing);
+      setLiveLowAvgState(frame.lowAvg);
+      setLiveHighAvgState(frame.highAvg);
+
+      // Determine classification status
+      const silenceThreshold = settingsRef.current?.calibration?.silence_threshold || 0.005;
+      const voicingThreshold = settingsRef.current?.calibration?.voicing_threshold || 0.28;
+      const whisperRatioThreshold = settingsRef.current?.calibration?.whisper_ratio_threshold || 1.80;
+
+      let status = "silence";
+      if (frame.rms >= silenceThreshold) {
+        const isVoiced = frame.voicing >= voicingThreshold;
+        const isWhisper = !isVoiced && frame.ratio >= whisperRatioThreshold;
+        if (isVoiced) status = "normal";
+        else if (isWhisper) status = "whisper";
+        else status = "other";
+      }
+      setLiveStatus(status);
+
+      // Draw the stored frequency and time domain data on the canvas spectrogram!
+      const canvas = canvasRef.current;
+      if (canvas && frame.freqData && frame.timeData) {
+        drawSpectrogramFrame(canvas, frame.freqData, frame.timeData, frame.rms, frame.lowAvg, frame.highAvg, frame.ratio, frame.voicing);
+      }
+
+      frameIdx++;
+    }, frameRateMs);
+
+    audio.onended = () => {
+      clearInterval(playbackIntervalRef.current);
+      isPlaybackActiveRef.current = false;
+      playbackIntervalRef.current = null;
+      playbackAudioRef.current = null;
+    };
+  };
+
+  const handleDeleteSandboxClip = (clipId) => {
+    setSandboxClips(prev => {
+      const next = prev.filter(c => c.id !== clipId);
+      // Automatically re-optimize whenever a clip is deleted
+      setTimeout(() => optimizeThresholds(next), 100);
+      return next;
+    });
+  };
+
+  const getClipClassification = (clip) => {
+    const silence = settingsRef.current?.calibration?.silence_threshold || 0.005;
+    const ratio = settingsRef.current?.calibration?.whisper_ratio_threshold || 1.80;
+    const voicing = settingsRef.current?.calibration?.voicing_threshold || 0.28;
+
+    const frames = clip.frames;
+    if (!frames || frames.length === 0) return "silence";
+
+    let activeRmsSum = 0;
+    let activeVoicingSum = 0;
+    let activeRatioSum = 0;
+    let activeCount = 0;
+    let totalRms = 0;
+
+    for (const f of frames) {
+      totalRms += f.rms;
+      if (f.rms >= silence) {
+        activeRmsSum += f.rms;
+        activeVoicingSum += f.voicing;
+        activeRatioSum += f.ratio;
+        activeCount++;
+      }
+    }
+
+    const avgRMS = totalRms / frames.length;
+    const avgVoicing = activeCount > 0 ? (activeVoicingSum / activeCount) : 0;
+    const avgRatio = activeCount > 0 ? (activeRatioSum / activeCount) : 1.0;
+
+    if (avgRMS < silence) return "silence";
+    if (avgVoicing >= voicing) return "talk";
+    if (avgRatio >= ratio) return "whisper";
+    return "other";
+  };
+
+  const optimizeThresholds = (clips) => {
+    if (!clips || clips.length === 0) return;
+
+    const evaluatedClips = clips.map(clip => ({
+      id: clip.id,
+      category: clip.category,
+      frames: clip.frames
+    }));
+
+    let bestAcc = -1;
+    let bestParams = null;
+
+    // Search parameter space
+    for (let silence = 0.002; silence <= 0.020; silence += 0.001) {
+      for (let ratio = 0.80; ratio <= 4.00; ratio += 0.10) {
+        for (let voicing = 0.15; voicing <= 0.45; voicing += 0.02) {
+          
+          let correctCount = 0;
+          
+          for (const clip of evaluatedClips) {
+            const frames = clip.frames;
+            if (frames.length === 0) continue;
+
+            let activeRmsSum = 0;
+            let activeVoicingSum = 0;
+            let activeRatioSum = 0;
+            let activeCount = 0;
+            let totalRms = 0;
+
+            for (const f of frames) {
+              totalRms += f.rms;
+              if (f.rms >= silence) {
+                activeRmsSum += f.rms;
+                activeVoicingSum += f.voicing;
+                activeRatioSum += f.ratio;
+                activeCount++;
+              }
+            }
+
+            const avgRMS = totalRms / frames.length;
+            const avgVoicing = activeCount > 0 ? (activeVoicingSum / activeCount) : 0;
+            const avgRatio = activeCount > 0 ? (activeRatioSum / activeCount) : 1.0;
+
+            let classification = "silence";
+            if (avgRMS >= silence) {
+              const isVoiced = avgVoicing >= voicing;
+              const isWhisper = !isVoiced && avgRatio >= ratio;
+              if (isVoiced) classification = "talk";
+              else if (isWhisper) classification = "whisper";
+              else classification = "other";
+            }
+
+            if (classification === clip.category) {
+              correctCount++;
+            }
+          }
+
+          const acc = correctCount / evaluatedClips.length;
+          
+          if (acc > bestAcc) {
+            bestAcc = acc;
+            bestParams = { silence, ratio, voicing };
+          }
+        }
+      }
+    }
+
+    if (bestParams) {
+      const currentSettings = settingsRef.current;
+      const finalSettings = {
+        ...currentSettings,
+        calibration: {
+          ...currentSettings.calibration,
+          silence_threshold: bestParams.silence,
+          whisper_ratio_threshold: bestParams.ratio,
+          voicing_threshold: bestParams.voicing
+        }
+      };
+      setSettings(finalSettings);
+      settingsService.saveSettings(finalSettings).then(() => {
+        console.log(`Auto-tweak optimized settings saved. Accuracy: ${Math.round(bestAcc * 100)}%`, bestParams);
+      }).catch(err => {
+        console.error("Auto-tweak failed to save settings:", err);
+      });
+    }
+  };
+
 
   const runManualCalib = (type) => {
     clearAllCalibIntervals();
@@ -354,13 +771,21 @@ const AdminPanel = ({ onClose }) => {
         setLiveHighNoiseState(highNoiseFloorRef.current);
 
         // Record samples for Auto-Calibration Wizard
-        if (calibPhaseRef.current === "measuring_ambient") {
+        if (calibPhaseRef.current === "measuring_silence") {
           calibSamplesRef.current.push({
             rms,
             lowAvg,
             highAvg
           });
         } else if (calibPhaseRef.current === "measuring_whisper") {
+          calibSamplesRef.current.push({
+            rms,
+            lowAvg,
+            highAvg,
+            ratio: activeRatio,
+            voicing
+          });
+        } else if (calibPhaseRef.current === "measuring_voice") {
           calibSamplesRef.current.push({
             rms,
             lowAvg,
@@ -392,133 +817,22 @@ const AdminPanel = ({ onClose }) => {
         }
         setLiveStatus(status);
 
-        // 3. Draw Beautiful zoomed-in frequency spectrogram (0Hz - 6000Hz)
-        const canvas = canvasRef.current;
-        if (canvas) {
-          const canvasCtx = canvas.getContext("2d");
-          if (canvasCtx) {
-            const w = canvas.width;
-            const h = canvas.height;
+        // 3. Record sandbox clip frames in real-time if active
+        if (recordingCategoryRef.current !== "") {
+          recordingFramesRef.current.push({
+            rms,
+            lowAvg,
+            highAvg,
+            ratio: activeRatio,
+            voicing,
+            freqData: new Uint8Array(freqArray),
+            timeData: new Uint8Array(timeArray)
+          });
+        }
 
-            // Draw dark background with sleek rounded corners
-            canvasCtx.fillStyle = "rgba(18, 18, 18, 0.95)";
-            canvasCtx.fillRect(0, 0, w, h);
-
-            // Subtle vertical background grid lines (every 1000Hz up to 5000Hz)
-            canvasCtx.strokeStyle = "rgba(255, 255, 255, 0.03)";
-            canvasCtx.lineWidth = 1;
-            for (let hz = 1000; hz <= 5000; hz += 1000) {
-              const gridX = (hz / 6000) * w;
-              canvasCtx.beginPath();
-              canvasCtx.moveTo(gridX, 0);
-              canvasCtx.lineTo(gridX, h);
-              canvasCtx.stroke();
-            }
-
-            // Draw low frequency region highlighted (80Hz - 400Hz)
-            const xLowStart = (80 / 6000) * w;
-            const xLowEnd = (400 / 6000) * w;
-            canvasCtx.fillStyle = "rgba(239, 68, 68, 0.08)"; // Coral/Red tint
-            canvasCtx.fillRect(xLowStart, 0, xLowEnd - xLowStart, h);
-
-            // Draw high frequency region highlighted (600Hz - 4000Hz)
-            const xHighStart = (600 / 6000) * w;
-            const xHighEnd = (4000 / 6000) * w;
-            canvasCtx.fillStyle = "rgba(16, 185, 129, 0.08)"; // Emerald/Green tint
-            canvasCtx.fillRect(xHighStart, 0, xHighEnd - xHighStart, h);
-
-            // Draw noise floor dashed lines in low & high regions
-            canvasCtx.setLineDash([4, 4]);
-            
-            // Low region noise floor
-            const yLowNoise = h - ((lowNoiseFloorRef.current || 5) / 255) * (h - 24) - 2;
-            canvasCtx.strokeStyle = "rgba(239, 68, 68, 0.4)";
-            canvasCtx.lineWidth = 1.5;
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(xLowStart, yLowNoise);
-            canvasCtx.lineTo(xLowEnd, yLowNoise);
-            canvasCtx.stroke();
-
-            // High region noise floor
-            const yHighNoise = h - ((highNoiseFloorRef.current || 5) / 255) * (h - 24) - 2;
-            canvasCtx.strokeStyle = "rgba(16, 185, 129, 0.4)";
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(xHighStart, yHighNoise);
-            canvasCtx.lineTo(xHighEnd, yHighNoise);
-            canvasCtx.stroke();
-
-            // Dashed borders for low & high regions
-            canvasCtx.strokeStyle = "rgba(239, 68, 68, 0.25)";
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(xLowStart, 0); canvasCtx.lineTo(xLowStart, h);
-            canvasCtx.moveTo(xLowEnd, 0); canvasCtx.lineTo(xLowEnd, h);
-            canvasCtx.stroke();
-
-            canvasCtx.strokeStyle = "rgba(16, 185, 129, 0.25)";
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(xHighStart, 0); canvasCtx.lineTo(xHighStart, h);
-            canvasCtx.moveTo(xHighEnd, 0); canvasCtx.lineTo(xHighEnd, h);
-            canvasCtx.stroke();
-            canvasCtx.setLineDash([]);
-
-            // Draw region text labels at the top
-            canvasCtx.font = "bold 9px Outfit, sans-serif";
-            canvasCtx.fillStyle = "rgba(239, 68, 68, 0.75)";
-            canvasCtx.fillText(`STEM PITCH (80-400Hz) - Ruis: ${Math.round(lowNoiseFloorRef.current)}`, xLowStart + 2, 14);
-
-            canvasCtx.fillStyle = "rgba(16, 185, 129, 0.75)";
-            canvasCtx.fillText(`FLUISTER BEREIK (600-4000Hz) - Ruis: ${Math.round(highNoiseFloorRef.current)}`, xHighStart + 4, 14);
-
-            // Plot frequency spectrum path
-            const gradient = canvasCtx.createLinearGradient(0, h, 0, 0);
-            gradient.addColorStop(0, "rgba(99, 102, 241, 0.02)"); 
-            gradient.addColorStop(0.5, "rgba(99, 102, 241, 0.12)");
-            gradient.addColorStop(1, "rgba(6, 182, 212, 0.45)"); // Neon cyan at peak
-
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(0, h);
-
-            for (let x = 0; x <= w; x++) {
-              const f = (x / w) * 6000;
-              const binFloat = f / binResolution;
-              const binLow = Math.floor(binFloat);
-              const binHigh = Math.min(freqArray.length - 1, binLow + 1);
-              const weight = binFloat - binLow;
-
-              const valLow = freqArray[binLow] || 0;
-              const valHigh = freqArray[binHigh] || 0;
-              const val = (1 - weight) * valLow + weight * valHigh;
-
-              // Scale amplitude for nice height on canvas
-              const y = h - (val / 255) * (h - 24) - 2;
-              canvasCtx.lineTo(x, y);
-            }
-            canvasCtx.lineTo(w, h);
-            canvasCtx.closePath();
-            canvasCtx.fillStyle = gradient;
-            canvasCtx.fill();
-
-            // Draw curve line
-            canvasCtx.beginPath();
-            for (let x = 0; x <= w; x++) {
-              const f = (x / w) * 6000;
-              const binFloat = f / binResolution;
-              const binLow = Math.floor(binFloat);
-              const binHigh = Math.min(freqArray.length - 1, binLow + 1);
-              const weight = binFloat - binLow;
-
-              const valLow = freqArray[binLow] || 0;
-              const valHigh = freqArray[binHigh] || 0;
-              const val = (1 - weight) * valLow + weight * valHigh;
-
-              const y = h - (val / 255) * (h - 24) - 2;
-              if (x === 0) canvasCtx.moveTo(x, y);
-              else canvasCtx.lineTo(x, y);
-            }
-            canvasCtx.strokeStyle = "rgba(6, 182, 212, 0.85)"; // Glowing cyan curve
-            canvasCtx.lineWidth = 1.5;
-            canvasCtx.stroke();
-          }
+        // 4. Draw to visualizer spectrogram only if playback is not active
+        if (!isPlaybackActiveRef.current && canvasRef.current) {
+          drawSpectrogramFrame(canvasRef.current, freqArray, timeArray, rms, lowAvg, highAvg, activeRatio, voicing);
         }
 
         liveAnimFrameRef.current = requestAnimationFrame(update);
@@ -533,6 +847,17 @@ const AdminPanel = ({ onClose }) => {
     clearAllCalibIntervals();
     setCalibStatus({ active: false, type: "", countdown: 0, text: "" });
     calibPhaseRef.current = "idle";
+    
+    // Stop playback
+    if (playbackAudioRef.current) {
+      playbackAudioRef.current.pause();
+      playbackAudioRef.current = null;
+    }
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current);
+      playbackIntervalRef.current = null;
+    }
+    isPlaybackActiveRef.current = false;
     if (liveAnimFrameRef.current) cancelAnimationFrame(liveAnimFrameRef.current);
     if (liveStreamRef.current) {
       liveStreamRef.current.getTracks().forEach(t => t.stop());
@@ -1332,6 +1657,264 @@ const AdminPanel = ({ onClose }) => {
                     </button>
 
                   </div>
+                </div>
+
+                {/* Calibration Sandbox Section */}
+                <div style={{
+                  padding: "24px",
+                  backgroundColor: "rgba(255, 255, 255, 0.01)",
+                  border: "1px solid rgba(255, 255, 255, 0.05)",
+                  borderRadius: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "20px"
+                }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: "1.05rem", fontWeight: "600", color: "#6366f1" }}>Multi-Clip Sandbox (Kalibratie Testomgeving)</h4>
+                    <p style={{ margin: 0, fontSize: "0.75rem", color: "#aaaaaa" }}>Neem meerdere clips op en test direct hoe goed de classificatie reageert op de drempels.</p>
+                  </div>
+
+                  {recordingCategory !== "" && (
+                    <div style={{
+                      padding: "16px",
+                      backgroundColor: "rgba(239, 68, 68, 0.1)",
+                      border: "1px solid rgba(239, 68, 68, 0.3)",
+                      borderRadius: "8px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <span style={{ fontWeight: "bold", color: "#f87171" }}>
+                        OPNEMEN ONDER CATEGORIE: {recordingCategory === "silence" ? "🤫 STILTE" : recordingCategory === "whisper" ? "💨 FLUISTERING" : "🗣️ GEWONE STEM"}
+                      </span>
+                      <span style={{ fontSize: "1.5rem", fontWeight: "900", color: "#f43f5e", animation: "pulse 1s infinite" }}>
+                        {recordingCountdown}s
+                      </span>
+                    </div>
+                  )}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
+                    
+                    {/* Category 1: Silence */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px", backgroundColor: "rgba(0,0,0,0.15)", padding: "12px", borderRadius: "10px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: "0.8rem", fontWeight: "bold", color: "#94a3b8" }}>🤫 Stilte Clips</span>
+                        <button
+                          type="button"
+                          disabled={recordingCategory !== ""}
+                          onClick={() => handleRecordSandboxClip("silence")}
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: "0.75rem",
+                            backgroundColor: "rgba(148, 163, 184, 0.15)",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          + Record
+                        </button>
+                      </div>
+                      
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "150px", overflowY: "auto" }}>
+                        {sandboxClips.filter(c => c.category === "silence").map((clip, idx) => {
+                          const cls = getClipClassification(clip);
+                          const isCorrect = cls === "silence";
+                          return (
+                            <div key={clip.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "rgba(255,255,255,0.02)", padding: "6px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <button type="button" onClick={() => handlePlaySandboxClip(clip)} style={{ background: "none", border: "none", color: "#38bdf8", cursor: "pointer", display: "flex", padding: 0 }}>
+                                  <Play size={12} />
+                                </button>
+                                <span style={{ fontSize: "0.7rem", color: "#888" }}>Clip #{idx+1}</span>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <span style={{
+                                  fontSize: "0.6rem",
+                                  padding: "2px 6px",
+                                  borderRadius: "10px",
+                                  backgroundColor: isCorrect ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)",
+                                  color: isCorrect ? "#10b981" : "#ef4444",
+                                  fontWeight: "bold"
+                                }}>
+                                  {isCorrect ? "Correct" : `Fout: ${cls}`}
+                                </span>
+                                <button type="button" onClick={() => handleDeleteSandboxClip(clip.id)} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", display: "flex", padding: 0 }}>
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {sandboxClips.filter(c => c.category === "silence").length === 0 && (
+                          <span style={{ fontSize: "0.7rem", color: "#555", fontStyle: "italic", textAlign: "center", padding: "10px 0" }}>Geen clips</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Category 2: Whisper */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px", backgroundColor: "rgba(0,0,0,0.15)", padding: "12px", borderRadius: "10px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: "0.8rem", fontWeight: "bold", color: "#34d399" }}>💨 Fluister Clips</span>
+                        <button
+                          type="button"
+                          disabled={recordingCategory !== ""}
+                          onClick={() => handleRecordSandboxClip("whisper")}
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: "0.75rem",
+                            backgroundColor: "rgba(16, 185, 129, 0.15)",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          + Record
+                        </button>
+                      </div>
+                      
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "150px", overflowY: "auto" }}>
+                        {sandboxClips.filter(c => c.category === "whisper").map((clip, idx) => {
+                          const cls = getClipClassification(clip);
+                          const isCorrect = cls === "whisper";
+                          return (
+                            <div key={clip.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "rgba(255,255,255,0.02)", padding: "6px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <button type="button" onClick={() => handlePlaySandboxClip(clip)} style={{ background: "none", border: "none", color: "#38bdf8", cursor: "pointer", display: "flex", padding: 0 }}>
+                                  <Play size={12} />
+                                </button>
+                                <span style={{ fontSize: "0.7rem", color: "#888" }}>Clip #{idx+1}</span>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <span style={{
+                                  fontSize: "0.6rem",
+                                  padding: "2px 6px",
+                                  borderRadius: "10px",
+                                  backgroundColor: isCorrect ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)",
+                                  color: isCorrect ? "#10b981" : "#ef4444",
+                                  fontWeight: "bold"
+                                }}>
+                                  {isCorrect ? "Correct" : `Fout: ${cls}`}
+                                </span>
+                                <button type="button" onClick={() => handleDeleteSandboxClip(clip.id)} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", display: "flex", padding: 0 }}>
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {sandboxClips.filter(c => c.category === "whisper").length === 0 && (
+                          <span style={{ fontSize: "0.7rem", color: "#555", fontStyle: "italic", textAlign: "center", padding: "10px 0" }}>Geen clips</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Category 3: Normal Talk */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px", backgroundColor: "rgba(0,0,0,0.15)", padding: "12px", borderRadius: "10px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: "0.8rem", fontWeight: "bold", color: "#f87171" }}>🗣️ Stem Clips</span>
+                        <button
+                          type="button"
+                          disabled={recordingCategory !== ""}
+                          onClick={() => handleRecordSandboxClip("voice")}
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: "0.75rem",
+                            backgroundColor: "rgba(239, 68, 68, 0.15)",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          + Record
+                        </button>
+                      </div>
+                      
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "150px", overflowY: "auto" }}>
+                        {sandboxClips.filter(c => c.category === "voice").map((clip, idx) => {
+                          const cls = getClipClassification(clip);
+                          const isCorrect = cls === "talk";
+                          return (
+                            <div key={clip.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "rgba(255,255,255,0.02)", padding: "6px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <button type="button" onClick={() => handlePlaySandboxClip(clip)} style={{ background: "none", border: "none", color: "#38bdf8", cursor: "pointer", display: "flex", padding: 0 }}>
+                                  <Play size={12} />
+                                </button>
+                                <span style={{ fontSize: "0.7rem", color: "#888" }}>Clip #{idx+1}</span>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <span style={{
+                                  fontSize: "0.6rem",
+                                  padding: "2px 6px",
+                                  borderRadius: "10px",
+                                  backgroundColor: isCorrect ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)",
+                                  color: isCorrect ? "#10b981" : "#ef4444",
+                                  fontWeight: "bold"
+                                }}>
+                                  {isCorrect ? "Correct" : `Fout: ${cls}`}
+                                </span>
+                                <button type="button" onClick={() => handleDeleteSandboxClip(clip.id)} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", display: "flex", padding: 0 }}>
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {sandboxClips.filter(c => c.category === "voice").length === 0 && (
+                          <span style={{ fontSize: "0.7rem", color: "#555", fontStyle: "italic", textAlign: "center", padding: "10px 0" }}>Geen clips</span>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {sandboxClips.length > 0 && (
+                    <div style={{
+                      padding: "16px",
+                      borderRadius: "8px",
+                      backgroundColor: sandboxClips.every(c => {
+                        const cls = getClipClassification(c);
+                        return cls === (c.category === "voice" ? "talk" : c.category);
+                      }) ? "rgba(16, 185, 129, 0.08)" : "rgba(245, 158, 11, 0.08)",
+                      border: "1px solid " + (sandboxClips.every(c => {
+                        const cls = getClipClassification(c);
+                        return cls === (c.category === "voice" ? "talk" : c.category);
+                      }) ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.2)"),
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <span style={{ fontSize: "0.8rem", color: "#e2e8f0" }}>
+                        {sandboxClips.every(c => {
+                          const cls = getClipClassification(c);
+                          return cls === (c.category === "voice" ? "talk" : c.category);
+                        }) ? (
+                          <span>🎉 <strong>Alle {sandboxClips.length} clips</strong> worden correct geclassificeerd!</span>
+                        ) : (
+                          <span>⚠️ Sommige clips falen onder de huidige drempelwaardes. Klik op <strong>Auto-Tweak</strong> om ze te optimaliseren.</span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => optimizeThresholds(sandboxClips)}
+                        style={{
+                          padding: "6px 14px",
+                          backgroundColor: "#6366f1",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "6px",
+                          fontWeight: "bold",
+                          fontSize: "0.75rem",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Auto-Tweak Drempels
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Status Badge */}
