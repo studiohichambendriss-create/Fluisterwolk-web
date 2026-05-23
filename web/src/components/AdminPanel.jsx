@@ -638,6 +638,8 @@ const AdminPanel = ({ onClose }) => {
       text = "Fluister nu zachtjes in de microfoon...";
     } else if (type === "voice") {
       text = "Praat nu op een normaal volume...";
+    } else if (type === "test_clip") {
+      text = "Praat of fluister nu. Test-opname loopt...";
     }
 
     setCalibStatus({
@@ -660,6 +662,7 @@ const AdminPanel = ({ onClose }) => {
         const samples = calibSamplesRef.current;
         const currentSettings = settingsRef.current;
         let updatedSettings = { ...currentSettings };
+        let shouldSave = true;
 
         if (type === "silence") {
           const avgRMS = samples.reduce((sum, s) => sum + s.rms, 0) / (samples.length || 1);
@@ -711,15 +714,120 @@ const AdminPanel = ({ onClose }) => {
             countdown: 0,
             text: `Stem periodiciteit succesvol gemeten! Aanbevolen drempel: ${recommendedVoicing.toFixed(2)}`
           });
+        } else if (type === "test_clip") {
+          shouldSave = false;
+          
+          const rmsList = samples.map(s => s.rms);
+          const lowAvgs = samples.map(s => s.lowAvg);
+          const highAvgs = samples.map(s => s.highAvg);
+          const voicingsList = samples.map(s => s.voicing);
+
+          // Use the exact same trimming logic as App.jsx!
+          const trimCount = 15;
+          let slicedRms = rmsList;
+          let slicedLowAvgs = lowAvgs;
+          let slicedHighAvgs = highAvgs;
+          let slicedVoicings = voicingsList;
+
+          if (rmsList.length > trimCount * 2 + 10) {
+            slicedRms = rmsList.slice(trimCount, rmsList.length - trimCount);
+            slicedLowAvgs = lowAvgs.slice(trimCount, lowAvgs.length - trimCount);
+            slicedHighAvgs = highAvgs.slice(trimCount, highAvgs.length - trimCount);
+            slicedVoicings = voicingsList.slice(trimCount, voicingsList.length - trimCount);
+          } else if (rmsList.length > 10) {
+            const dynamicTrim = Math.floor(rmsList.length * 0.25);
+            slicedRms = rmsList.slice(dynamicTrim, rmsList.length - dynamicTrim);
+            slicedLowAvgs = lowAvgs.slice(dynamicTrim, lowAvgs.length - dynamicTrim);
+            slicedHighAvgs = highAvgs.slice(dynamicTrim, highAvgs.length - dynamicTrim);
+            slicedVoicings = voicingsList.slice(dynamicTrim, voicingsList.length - dynamicTrim);
+          }
+
+          const SILENCE_THRESHOLD = currentSettings.calibration?.silence_threshold !== undefined
+            ? parseFloat(currentSettings.calibration.silence_threshold)
+            : 0.005;
+
+          const WHISPER_RATIO_THRESHOLD = currentSettings.calibration?.whisper_ratio_threshold !== undefined
+            ? parseFloat(currentSettings.calibration.whisper_ratio_threshold)
+            : 1.8;
+
+          const VOICING_THRESHOLD = currentSettings.calibration?.voicing_threshold !== undefined
+            ? parseFloat(currentSettings.calibration.voicing_threshold)
+            : 0.30;
+
+          const fixedNoiseFloor = 5.0;
+
+          let activeRmsSum = 0;
+          let activeVoicingSum = 0;
+          let activeRatioSum = 0;
+          let activeFrameCount = 0;
+
+          for (let i = 0; i < slicedRms.length; i++) {
+            const rms = slicedRms[i];
+            if (rms >= SILENCE_THRESHOLD) {
+              activeRmsSum += rms;
+              activeVoicingSum += slicedVoicings[i] || 0;
+
+              const lowSignal = Math.max(0.01, (slicedLowAvgs[i] || 0) - fixedNoiseFloor);
+              const highSignal = Math.max(0.01, (slicedHighAvgs[i] || 0) - fixedNoiseFloor);
+              const activeRatio = highSignal / lowSignal;
+              activeRatioSum += activeRatio;
+              
+              activeFrameCount++;
+            }
+          }
+
+          const avgRms = slicedRms.reduce((a, b) => a + b, 0) / (slicedRms.length || 1);
+          const avgVoicing = activeFrameCount > 0 ? (activeVoicingSum / activeFrameCount) : 0;
+          const avgActiveRatio = activeFrameCount > 0 ? (activeRatioSum / activeFrameCount) : 1.0;
+
+          const isSilence = avgRms < SILENCE_THRESHOLD;
+          const isVoiced = !isSilence && avgVoicing >= VOICING_THRESHOLD;
+          const isWhispered = !isSilence && !isVoiced && avgActiveRatio >= WHISPER_RATIO_THRESHOLD;
+
+          let resultText = "Ander geluid";
+          if (isSilence) resultText = "Stilte";
+          else if (isVoiced) resultText = "Spreken (Te Luid)";
+          else if (isWhispered) resultText = "Fluistering (Correct!)";
+
+          console.log(
+            "=================== TEST OPNAME RESULTAAT ===================\n" +
+            `Totale frames: ${rmsList.length} -> Sliced frames: ${slicedRms.length}\n` +
+            `Silence Threshold: ${SILENCE_THRESHOLD} | Avg RMS: ${avgRms.toFixed(5)}\n` +
+            `Ratio Threshold: ${WHISPER_RATIO_THRESHOLD} | Avg Active Ratio: ${avgActiveRatio.toFixed(3)}\n` +
+            `Voicing Threshold: ${VOICING_THRESHOLD} | Avg Voicing: ${avgVoicing.toFixed(3)}\n` +
+            `Is Silence: ${isSilence} | Is Voiced: ${isVoiced} | Is Whisper: ${isWhispered}\n` +
+            `Resultaat: ${resultText}\n` +
+            "==========================================================="
+          );
+
+          console.log("Raw RMS List:", rmsList);
+          console.log("Raw Ratio List:", samples.map(s => s.ratio));
+          console.log("Raw Voicing List:", voicingsList);
+          console.log("Sliced RMS List:", slicedRms);
+          console.log("Sliced Ratio List:", slicedRms.map((rms, idx) => {
+            const lowSignal = Math.max(0.01, (slicedLowAvgs[idx] || 0) - fixedNoiseFloor);
+            const highSignal = Math.max(0.01, (slicedHighAvgs[idx] || 0) - fixedNoiseFloor);
+            return highSignal / lowSignal;
+          }));
+          console.log("Sliced Voicing List:", slicedVoicings);
+
+          setCalibStatus({
+            active: true,
+            type: "test_complete",
+            countdown: 0,
+            text: `Test opname klaar! Resultaat: ${resultText}. Bekijk console (F12) voor details.`
+          });
         }
 
-        // Save immediately to Firestore
-        setSettings(updatedSettings);
-        settingsService.saveSettings(updatedSettings).then(() => {
-          console.log(`Successfully saved ${type} calibration to Firestore.`);
-        }).catch(err => {
-          console.error("Failed to save manual calibration:", err);
-        });
+        if (shouldSave) {
+          // Save immediately to Firestore
+          setSettings(updatedSettings);
+          settingsService.saveSettings(updatedSettings).then(() => {
+            console.log(`Successfully saved ${type} calibration to Firestore.`);
+          }).catch(err => {
+            console.error("Failed to save manual calibration:", err);
+          });
+        }
       }
     }, 1000);
 
@@ -856,6 +964,14 @@ const AdminPanel = ({ onClose }) => {
             voicing
           });
         } else if (calibPhaseRef.current === "measuring_voice") {
+          calibSamplesRef.current.push({
+            rms,
+            lowAvg,
+            highAvg,
+            ratio: activeRatio,
+            voicing
+          });
+        } else if (calibPhaseRef.current === "measuring_test_clip") {
           calibSamplesRef.current.push({
             rms,
             lowAvg,
@@ -1590,23 +1706,43 @@ const AdminPanel = ({ onClose }) => {
                   <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "1.5rem", margin: 0 }}>Microfoon & Volume Kalibratie</h3>
                 </div>
 
-                {/* State Machine: Manual Calibration Buttons */}
+                {/* Calibration Sandbox Section */}
                 <div style={{
                   padding: "24px",
-                  background: "linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(6, 182, 212, 0.08) 100%)",
-                  border: "1px solid rgba(99, 102, 241, 0.15)",
+                  backgroundColor: "rgba(255, 255, 255, 0.01)",
+                  border: "1px solid rgba(255, 255, 255, 0.05)",
                   borderRadius: "16px",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "16px",
-                  boxShadow: "0 8px 32px rgba(0,0,0,0.2)"
+                  gap: "20px"
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <Sliders color="#6366f1" size={24} />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>
-                      <h4 style={{ margin: 0, fontSize: "1.05rem", fontWeight: "600" }}>Kalibratie Meet-Hulpmiddelen</h4>
-                      <p style={{ margin: 0, fontSize: "0.75rem", color: "#aaaaaa" }}>Meten en kalibreren per geluidstype voor maximale nauwkeurigheid.</p>
+                      <h4 style={{ margin: 0, fontSize: "1.05rem", fontWeight: "600", color: "#6366f1" }}>Multi-Clip Sandbox (Kalibratie Testomgeving)</h4>
+                      <p style={{ margin: 0, fontSize: "0.75rem", color: "#aaaaaa" }}>Neem meerdere clips op en test direct hoe goed de classificatie reageert op de drempels.</p>
                     </div>
+                    <button
+                      type="button"
+                      disabled={calibStatus.active && calibStatus.countdown > 0}
+                      onClick={() => runManualCalib("test_clip")}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: "8px",
+                        backgroundColor: "rgba(139, 92, 246, 0.1)",
+                        border: "1px solid rgba(139, 92, 246, 0.25)",
+                        color: "#c084fc",
+                        fontWeight: "600",
+                        fontSize: "0.85rem",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      <span style={{ fontSize: "1.2rem" }}>🧪</span>
+                      <span>Test Opname (Console Log)</span>
+                    </button>
                   </div>
 
                   {/* Calibration Status HUD */}
@@ -1647,102 +1783,6 @@ const AdminPanel = ({ onClose }) => {
                       )}
                     </div>
                   )}
-
-                  {/* Three Buttons Grid */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
-                    
-                    {/* Button 1: Silence */}
-                    <button
-                      type="button"
-                      disabled={calibStatus.active && calibStatus.countdown > 0}
-                      onClick={() => runManualCalib("silence")}
-                      style={{
-                        padding: "12px",
-                        borderRadius: "8px",
-                        backgroundColor: "rgba(148, 163, 184, 0.1)",
-                        border: "1px solid rgba(148, 163, 184, 0.25)",
-                        color: "#e2e8f0",
-                        fontWeight: "600",
-                        fontSize: "0.8rem",
-                        cursor: "pointer",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: "6px",
-                        transition: "all 0.2s"
-                      }}
-                    >
-                      <span>🤫 Meet Stilte</span>
-                      <span style={{ fontSize: "0.65rem", color: "#94a3b8", fontWeight: "normal" }}>Achtergrondruis filteren</span>
-                    </button>
-
-                    {/* Button 2: Whisper */}
-                    <button
-                      type="button"
-                      disabled={calibStatus.active && calibStatus.countdown > 0}
-                      onClick={() => runManualCalib("whisper")}
-                      style={{
-                        padding: "12px",
-                        borderRadius: "8px",
-                        backgroundColor: "rgba(16, 185, 129, 0.1)",
-                        border: "1px solid rgba(16, 185, 129, 0.25)",
-                        color: "#34d399",
-                        fontWeight: "600",
-                        fontSize: "0.8rem",
-                        cursor: "pointer",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: "6px",
-                        transition: "all 0.2s"
-                      }}
-                    >
-                      <span>💨 Meet Fluistering</span>
-                      <span style={{ fontSize: "0.65rem", color: "#10b981", fontWeight: "normal" }}>Fluister-drempel meten</span>
-                    </button>
-
-                    {/* Button 3: Normal Voice */}
-                    <button
-                      type="button"
-                      disabled={calibStatus.active && calibStatus.countdown > 0}
-                      onClick={() => runManualCalib("voice")}
-                      style={{
-                        padding: "12px",
-                        borderRadius: "8px",
-                        backgroundColor: "rgba(239, 68, 68, 0.1)",
-                        border: "1px solid rgba(239, 68, 68, 0.25)",
-                        color: "#f87171",
-                        fontWeight: "600",
-                        fontSize: "0.8rem",
-                        cursor: "pointer",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: "6px",
-                        transition: "all 0.2s"
-                      }}
-                    >
-                      <span>🗣️ Meet Gewone Stem</span>
-                      <span style={{ fontSize: "0.65rem", color: "#f87171", fontWeight: "normal" }}>Praten uitsluiten</span>
-                    </button>
-
-                  </div>
-                </div>
-
-                {/* Calibration Sandbox Section */}
-                <div style={{
-                  padding: "24px",
-                  backgroundColor: "rgba(255, 255, 255, 0.01)",
-                  border: "1px solid rgba(255, 255, 255, 0.05)",
-                  borderRadius: "16px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "20px"
-                }}>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: "1.05rem", fontWeight: "600", color: "#6366f1" }}>Multi-Clip Sandbox (Kalibratie Testomgeving)</h4>
-                    <p style={{ margin: 0, fontSize: "0.75rem", color: "#aaaaaa" }}>Neem meerdere clips op en test direct hoe goed de classificatie reageert op de drempels.</p>
-                  </div>
 
                   {recordingCategory !== "" && (
                     <div style={{

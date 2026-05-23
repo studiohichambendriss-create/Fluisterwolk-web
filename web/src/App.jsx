@@ -721,6 +721,26 @@ function App() {
     const highAvgs = collectedHighAvgsRef.current;
     const voicingsList = collectedVoicingsRef.current;
 
+    // Trim first and last frames to discard button press/release mechanical transients/handling noise
+    const trimCount = 15;
+    let slicedRms = rmsList;
+    let slicedLowAvgs = lowAvgs;
+    let slicedHighAvgs = highAvgs;
+    let slicedVoicings = voicingsList;
+
+    if (rmsList.length > trimCount * 2 + 10) {
+      slicedRms = rmsList.slice(trimCount, rmsList.length - trimCount);
+      slicedLowAvgs = lowAvgs.slice(trimCount, lowAvgs.length - trimCount);
+      slicedHighAvgs = highAvgs.slice(trimCount, highAvgs.length - trimCount);
+      slicedVoicings = voicingsList.slice(trimCount, voicingsList.length - trimCount);
+    } else if (rmsList.length > 10) {
+      const dynamicTrim = Math.floor(rmsList.length * 0.25);
+      slicedRms = rmsList.slice(dynamicTrim, rmsList.length - dynamicTrim);
+      slicedLowAvgs = lowAvgs.slice(dynamicTrim, lowAvgs.length - dynamicTrim);
+      slicedHighAvgs = highAvgs.slice(dynamicTrim, highAvgs.length - dynamicTrim);
+      slicedVoicings = voicingsList.slice(dynamicTrim, voicingsList.length - dynamicTrim);
+    }
+
     const SILENCE_THRESHOLD = settings.calibration?.silence_threshold !== undefined
       ? parseFloat(settings.calibration.silence_threshold)
       : 0.005;
@@ -742,14 +762,14 @@ function App() {
     let activeRatioSum = 0;
     let activeFrameCount = 0;
 
-    for (let i = 0; i < rmsList.length; i++) {
-      const rms = rmsList[i];
+    for (let i = 0; i < slicedRms.length; i++) {
+      const rms = slicedRms[i];
       if (rms >= SILENCE_THRESHOLD) {
         activeRmsSum += rms;
-        activeVoicingSum += voicingsList[i] || 0;
+        activeVoicingSum += slicedVoicings[i] || 0;
 
-        const lowSignal = Math.max(0.01, (lowAvgs[i] || 0) - fixedNoiseFloor);
-        const highSignal = Math.max(0.01, (highAvgs[i] || 0) - fixedNoiseFloor);
+        const lowSignal = Math.max(0.01, (slicedLowAvgs[i] || 0) - fixedNoiseFloor);
+        const highSignal = Math.max(0.01, (slicedHighAvgs[i] || 0) - fixedNoiseFloor);
         const activeRatio = highSignal / lowSignal;
         activeRatioSum += activeRatio;
         
@@ -757,7 +777,7 @@ function App() {
       }
     }
 
-    const avgRms = rmsList.reduce((a, b) => a + b, 0) / (rmsList.length || 1);
+    const avgRms = slicedRms.reduce((a, b) => a + b, 0) / (slicedRms.length || 1);
     const avgVoicing = activeFrameCount > 0 ? (activeVoicingSum / activeFrameCount) : 0;
     const avgActiveRatio = activeFrameCount > 0 ? (activeRatioSum / activeFrameCount) : 1.0;
 
