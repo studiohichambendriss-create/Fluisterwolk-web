@@ -251,6 +251,28 @@ export const dbService = {
     return true;
   },
 
+  // Update whisper safe status
+  updateWhisperSafeStatus: async (id, isSafe) => {
+    if (!isMockMode && db) {
+      try {
+        await updateDoc(doc(db, "whispers", id), { isSafe });
+        return true;
+      } catch (e) {
+        console.error("Firestore error in updateWhisperSafeStatus:", e);
+        throw e;
+      }
+    }
+    
+    // Mock mode update
+    let mockList = getMockWhispers();
+    const index = mockList.findIndex(item => item.id === id);
+    if (index !== -1) {
+      mockList[index].isSafe = isSafe;
+      saveMockWhispers(mockList);
+    }
+    return true;
+  },
+
   // Real-time subscription to active whispers
   subscribeWhispers: (onUpdate, onError) => {
     if (!isMockMode && db) {

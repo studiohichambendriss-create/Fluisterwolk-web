@@ -1675,6 +1675,7 @@ const AdminPanel = ({ onClose }) => {
                       <table className="whispers-table">
                         <thead>
                           <tr>
+                            <th style={{ textAlign: "center", width: "50px" }}>Veilig</th>
                             <th>Tijdstip</th>
                             <th>Naam / Tekst</th>
                             <th>Type</th>
@@ -1684,8 +1685,30 @@ const AdminPanel = ({ onClose }) => {
                           </tr>
                         </thead>
                         <tbody>
-                          {whispers.map((whisper) => (
-                            <tr key={whisper.id}>
+                          {whispers.map((whisper) => {
+                            let rowBg = "transparent";
+                            if (whisper.isSafe) {
+                              rowBg = "rgba(16, 185, 129, 0.15)"; // Green if manually marked safe
+                            } else {
+                              const classLevel = checkBadLanguage(whisper.transcription);
+                              if (classLevel === "red") rowBg = "rgba(239, 68, 68, 0.25)"; // Red for highly likely
+                              else if (classLevel === "orange") rowBg = "rgba(245, 158, 11, 0.25)"; // Orange for potential
+                            }
+
+                            return (
+                            <tr key={whisper.id} style={{ backgroundColor: rowBg, transition: "background-color 0.3s" }}>
+                              <td style={{ textAlign: "center" }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={!!whisper.isSafe} 
+                                  onChange={(e) => {
+                                    const safe = e.target.checked;
+                                    setWhispers(prev => prev.map(w => w.id === whisper.id ? { ...w, isSafe: safe } : w));
+                                    dbService.updateWhisperSafeStatus(whisper.id, safe);
+                                  }}
+                                  style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "#10b981" }}
+                                />
+                              </td>
                               <td style={{ fontSize: "0.75rem", color: "#888888", whiteSpace: "nowrap" }}>{whisper.timestamp}</td>
                               <td style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "1.05rem", fontWeight: "500" }}>{whisper.transcription}</td>
                               <td>
@@ -1734,7 +1757,8 @@ const AdminPanel = ({ onClose }) => {
                                 </button>
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
