@@ -785,19 +785,26 @@ function App() {
     const isVoiced = !isSilence && avgVoicing >= VOICING_THRESHOLD;
     const isWhispered = !isSilence && !isVoiced && avgActiveRatio >= WHISPER_RATIO_THRESHOLD;
 
-    console.log(
-      "Smart Audio Processing. Avg RMS:", avgRms.toFixed(5), 
-      "Silence Threshold:", SILENCE_THRESHOLD, 
-      "Noise Floor Low:", fixedNoiseFloor.toFixed(2),
-      "Noise Floor High:", fixedNoiseFloor.toFixed(2),
-      "Avg Active Ratio:", avgActiveRatio.toFixed(3), 
-      "Ratio Threshold:", WHISPER_RATIO_THRESHOLD, 
-      "Avg Voicing:", avgVoicing.toFixed(3),
-      "Voicing Threshold:", VOICING_THRESHOLD,
-      "Is Silence:", isSilence,
-      "Is Voiced:", isVoiced,
-      "Is Whisper:", isWhispered
-    );
+    let classification = "other";
+    if (isSilence) classification = "silence";
+    else if (isVoiced) classification = "talk";
+    else if (isWhispered) classification = "whisper";
+
+    console.log(`=================== MAIN APP OPNAME RESULTAAT ===================
+Totale frames: ${rmsList.length} -> Sliced frames: ${slicedRms.length}
+Silence Threshold: ${SILENCE_THRESHOLD} | Avg RMS: ${avgRms.toFixed(5)}
+Ratio Threshold: ${WHISPER_RATIO_THRESHOLD} | Avg Active Ratio: ${avgActiveRatio.toFixed(3)}
+Voicing Threshold: ${VOICING_THRESHOLD} | Avg Voicing: ${avgVoicing.toFixed(3)}
+Is Silence: ${isSilence} | Is Voiced: ${isVoiced} | Is Whisper: ${isWhispered}
+Resultaat: ${classification}
+===========================================================`);
+
+    console.log("Raw RMS List:", rmsList);
+    console.log("Raw Ratio List:", highAvgs.map((h, i) => Math.max(0.01, h - fixedNoiseFloor) / Math.max(0.01, lowAvgs[i] - fixedNoiseFloor)));
+    console.log("Raw Voicing List:", voicingsList);
+    console.log("Sliced RMS List:", slicedRms);
+    console.log("Sliced Ratio List:", slicedHighAvgs.map((h, i) => Math.max(0.01, h - fixedNoiseFloor) / Math.max(0.01, slicedLowAvgs[i] - fixedNoiseFloor)));
+    console.log("Sliced Voicing List:", slicedVoicings);
 
     const noWhisperTimeoutMs = (parseFloat(settings.calibration?.no_whisper_timeout) || 3.0) * 1000;
 
