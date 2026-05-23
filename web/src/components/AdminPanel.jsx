@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { authService, dbService, storageService, settingsService, DEFAULT_SETTINGS, isMockMode } from "../firebase";
 import { Lock, Mail, Play, Trash2, ArrowLeft, Download, LogOut, CheckCircle, AlertTriangle, ShieldCheck, Sliders, Type, Database, RefreshCw, Undo2 } from "lucide-react";
+import { saveSandboxClip, loadSandboxClips, deleteSandboxClip } from "../indexedDB";
 
 // Color Conversions Helper
 const rgbToHex = (rgb) => {
@@ -95,9 +96,29 @@ const AdminPanel = ({ onClose }) => {
   const [deletedWhispers, setDeletedWhispers] = useState([]);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const settingsRef = useRef(settings);
+  const saveTimeoutRef = useRef(null);
+
   useEffect(() => {
     settingsRef.current = settings;
+    // Auto-save settings on change, debounced
+    if (settings !== DEFAULT_SETTINGS) {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(() => {
+        settingsService.saveSettings(settings).catch(e => console.error("Auto-save error:", e));
+      }, 1000);
+    }
   }, [settings]);
+
+  useEffect(() => {
+    loadSandboxClips().then(clips => {
+      // Recreate object URLs for loaded blobs
+      const loaded = clips.map(c => ({
+        ...c,
+        url: URL.createObjectURL(c.blob)
+      }));
+      setSandboxClips(loaded);
+    }).catch(e => console.error("Failed to load sandbox clips:", e));
+  }, []);
 
   const [rawConfigInput, setRawConfigInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -315,8 +336,13 @@ const AdminPanel = ({ onClose }) => {
         id: `sandbox_${Date.now()}`,
         category,
         url,
+        blob, // Keep blob for IDB
         frames: [...recordingFramesRef.current]
       };
+
+      // Save to IDB
+      saveSandboxClip({ id: newClip.id, category: newClip.category, blob: newClip.blob, frames: newClip.frames })
+        .catch(e => console.error("Failed to save clip to IDB:", e));
 
       setSandboxClips(prev => {
         const next = [...prev, newClip];
@@ -426,13 +452,15 @@ const AdminPanel = ({ onClose }) => {
   };
 
   const handleDeleteSandboxClip = (clipId) => {
-    setSandboxClips(prev => {
-      const next = prev.filter(c => c.id !== clipId);
-      // Automatically re-optimize whenever a clip is deleted
-      setTimeout(() => optimizeThresholds(next), 100);
-      return next;
-    });
-  };
+      deleteSandboxClip(clipId).catch(e => console.error("Failed to delete clip from IDB:", e));
+      
+      setSandboxClips(prev => {
+        const next = prev.filter(c => c.id !== clipId);
+        // Automatically re-optimize whenever a clip is deleted
+        setTimeout(() => optimizeThresholds(next), 100);
+        return next;
+      });
+    };
 
   const getClipClassification = (clip) => {
     const silence = settingsRef.current?.calibration?.silence_threshold || 0.005;
