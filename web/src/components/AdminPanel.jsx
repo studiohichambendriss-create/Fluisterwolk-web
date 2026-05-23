@@ -571,19 +571,28 @@ const AdminPanel = ({ onClose }) => {
     }
 
     if (bestCombinations.length > 0) {
-      // Find the center of the acceptable parameter space for maximum robustness
-      let sumSilence = 0, sumRatio = 0, sumVoicing = 0;
+      // Pick the single proven combination closest to the safe center defaults
+      // This prevents 'averaging' from falling into invalid gaps if clips overlap
+      const defaultSilence = 0.005;
+      const defaultRatio = 1.80;
+      const defaultVoicing = 0.30;
+      
+      let bestParams = bestCombinations[0];
+      let minDistance = Infinity;
+
       for (const c of bestCombinations) {
-        sumSilence += c.silence;
-        sumRatio += c.ratio;
-        sumVoicing += c.voicing;
+        // Normalize distance metrics
+        const dSilence = (c.silence - defaultSilence) / 0.030;
+        const dRatio = (c.ratio - defaultRatio) / 6.0;
+        const dVoicing = (c.voicing - defaultVoicing) / 0.80;
+        
+        const distSq = (dSilence * dSilence) + (dRatio * dRatio) + (dVoicing * dVoicing);
+        if (distSq < minDistance) {
+          minDistance = distSq;
+          bestParams = c;
+        }
       }
       
-      const bestParams = {
-        silence: sumSilence / bestCombinations.length,
-        ratio: sumRatio / bestCombinations.length,
-        voicing: sumVoicing / bestCombinations.length
-      };
       const currentSettings = settingsRef.current;
       const finalSettings = {
         ...currentSettings,
