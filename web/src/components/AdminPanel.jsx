@@ -23,9 +23,24 @@ const hexToRgb = (hex) => {
 function getVoicingPeriodicity(timeArray, sampleRate) {
   const n = timeArray.length;
   const samples = new Float32Array(n);
+  
+  // 1. High-Pass Filter (80Hz cutoff) to remove room rumble, fans, and DC offset
+  let prevX = 0;
+  let prevY = 0;
+  const dt = 1 / sampleRate;
+  const rc = 1 / (2 * Math.PI * 80);
+  const alpha = rc / (rc + dt);
+
+  for (let i = 0; i < n; i++) {
+    const x = (timeArray[i] - 128) / 128;
+    samples[i] = alpha * (prevY + x - prevX);
+    prevX = x;
+    prevY = samples[i];
+  }
+
+  // 2. Remove mean
   let mean = 0;
   for (let i = 0; i < n; i++) {
-    samples[i] = (timeArray[i] - 128) / 128;
     mean += samples[i];
   }
   mean /= n;
@@ -108,134 +123,119 @@ const AdminPanel = ({ onClose }) => {
   const [liveLowNoiseState, setLiveLowNoiseState] = useState(5.0);
   const [liveHighNoiseState, setLiveHighNoiseState] = useState(5.0);
 
-  // Auto-Calibration Wizard States
-  const [calibUiPhase, setCalibUiPhase] = useState("idle"); // idle | countdown_ambient | measuring_ambient | countdown_whisper | measuring_whisper | complete
-  const [calibCountdown, setCalibCountdown] = useState(0);
-  const [calibStatusText, setCalibStatusText] = useState("");
+  // Manual Calibration States
+  const [calibStatus, setCalibStatus] = useState({
+    active: false,
+    type: "", // silence | whisper | voice
+    countdown: 0,
+    text: ""
+  });
   const calibPhaseRef = useRef("idle");
   const calibSamplesRef = useRef([]);
   const calibIntervalsRef = useRef([]);
-
-  const setCalibPhase = (phase) => {
-    calibPhaseRef.current = phase;
-    setCalibUiPhase(phase);
-  };
 
   const clearAllCalibIntervals = () => {
     calibIntervalsRef.current.forEach(timer => clearInterval(timer));
     calibIntervalsRef.current = [];
   };
 
-  const handleStartAutoCalib = () => {
+  const runManualCalib = (type) => {
     clearAllCalibIntervals();
     calibSamplesRef.current = [];
-    setCalibPhase("countdown_ambient");
-    setCalibCountdown(3);
-    setCalibStatusText("Wees a.u.b. helemaal stil. We gaan omgevingsgeluid meten over 3 seconden...");
+    calibPhaseRef.current = `measuring_${type}`;
+    
+    let text = "";
+    if (type === "silence") {
+      text = "Wees a.u.b. stil. Omgevingsgeluid meten...";
+    } else if (type === "whisper") {
+      text = "Fluister nu zachtjes in de microfoon...";
+    } else if (type === "voice") {
+      text = "Praat nu op een normaal volume...";
+    }
+
+    setCalibStatus({
+      active: true,
+      type,
+      countdown: 3,
+      text
+    });
 
     let count = 3;
     const timer = setInterval(() => {
       count--;
       if (count > 0) {
-        setCalibCountdown(count);
+        setCalibStatus(prev => ({ ...prev, countdown: count }));
       } else {
         clearInterval(timer);
-        // Start measuring ambient noise
-        setCalibPhase("measuring_ambient");
-        setCalibCountdown(2);
-        setCalibStatusText("Stilte meten... Blijf stil...");
         
-        let measureCount = 2;
-        const measureTimer = setInterval(() => {
-          measureCount--;
-          if (measureCount > 0) {
-            setCalibCountdown(measureCount);
-          } else {
-            clearInterval(measureTimer);
-            // Ambient measurement done. Compute ambient noise.
-            const ambientSamples = calibSamplesRef.current;
-            calibSamplesRef.current = []; // Reset for whisper
-            
-            const avgAmbientRMS = ambientSamples.reduce((sum, s) => sum + s.rms, 0) / (ambientSamples.length || 1);
-            const avgAmbientLow = ambientSamples.reduce((sum, s) => sum + s.lowAvg, 0) / (ambientSamples.length || 1);
-            const avgAmbientHigh = ambientSamples.reduce((sum, s) => sum + s.highAvg, 0) / (ambientSamples.length || 1);
+        // Finalize measurement
+        calibPhaseRef.current = "idle";
+        const samples = calibSamplesRef.current;
+        const currentSettings = settingsRef.current;
+        let updatedSettings = { ...currentSettings };
 
-            const ambientResults = {
-              rms: avgAmbientRMS,
-              low: avgAmbientLow,
-              high: avgAmbientHigh
-            };
+        if (type === "silence") {
+          const avgRMS = samples.reduce((sum, s) => sum + s.rms, 0) / (samples.length || 1);
+          const avgLow = samples.reduce((sum, s) => sum + s.lowAvg, 0) / (samples.length || 1);
+          const avgHigh = samples.reduce((sum, s) => sum + s.highAvg, 0) / (samples.length || 1);
 
-            // Transition to Whisper Countdown
-            setCalibPhase("countdown_whisper");
-            setCalibCountdown(3);
-            setCalibStatusText("Goed gedaan! Begin nu zachtjes te fluisteren in de microfoon over 3 seconden...");
+          lowNoiseFloorRef.current = avgLow;
+          highNoiseFloorRef.current = avgHigh;
 
-            let whisperCount = 3;
-            const whisperTimer = setInterval(() => {
-              whisperCount--;
-              if (whisperCount > 0) {
-                setCalibCountdown(whisperCount);
-              } else {
-                clearInterval(whisperTimer);
-                // Start measuring whisper
-                setCalibPhase("measuring_whisper");
-                setCalibCountdown(2);
-                setCalibStatusText("Fluisteren... Blijf praten in een zachte fluister...");
+          const recommendedSilence = Math.max(0.003, Math.min(0.020, avgRMS * 1.5));
+          updatedSettings.calibration = {
+            ...updatedSettings.calibration,
+            silence_threshold: recommendedSilence
+          };
+          
+          setCalibStatus({
+            active: true,
+            type: "silence_complete",
+            countdown: 0,
+            text: `Stilte succesvol gemeten! Aanbevolen drempel: ${recommendedSilence.toFixed(4)}`
+          });
+        } else if (type === "whisper") {
+          const avgRatio = samples.reduce((sum, s) => sum + s.ratio, 0) / (samples.length || 1);
+          const recommendedRatio = Math.max(1.00, Math.min(5.50, avgRatio * 0.70));
+          
+          updatedSettings.calibration = {
+            ...updatedSettings.calibration,
+            whisper_ratio_threshold: recommendedRatio
+          };
 
-                let whisperMeasureCount = 2;
-                const whisperMeasureTimer = setInterval(() => {
-                  whisperMeasureCount--;
-                  if (whisperMeasureCount > 0) {
-                    setCalibCountdown(whisperMeasureCount);
-                  } else {
-                    clearInterval(whisperMeasureTimer);
-                    
-                    // Whisper measurement done. Compute thresholds!
-                    const whisperSamples = calibSamplesRef.current;
-                    
-                    const avgWhisperRatio = whisperSamples.reduce((sum, s) => sum + s.ratio, 0) / (whisperSamples.length || 1);
+          setCalibStatus({
+            active: true,
+            type: "whisper_complete",
+            countdown: 0,
+            text: `Fluister ratio succesvol gemeten! Aanbevolen drempel: ${recommendedRatio.toFixed(2)}`
+          });
+        } else if (type === "voice") {
+          const avgVoicing = samples.reduce((sum, s) => sum + s.voicing, 0) / (samples.length || 1);
+          const recommendedVoicing = Math.max(0.15, Math.min(0.50, avgVoicing * 0.75));
 
-                    // Compute recommended thresholds
-                    const recommendedSilence = Math.max(0.003, Math.min(0.020, ambientResults.rms * 1.5));
-                    const recommendedRatio = Math.max(1.00, Math.min(4.50, avgWhisperRatio * 0.75));
-                    const recommendedVoicing = 0.28; // Standard voice pitch boundary
+          updatedSettings.calibration = {
+            ...updatedSettings.calibration,
+            voicing_threshold: recommendedVoicing
+          };
 
-                    // Update Settings state and save immediately to database to prevent loss!
-                    const currentSettings = settingsRef.current;
-                    const finalSettings = {
-                      ...currentSettings,
-                      calibration: {
-                        ...currentSettings.calibration,
-                        silence_threshold: recommendedSilence,
-                        whisper_ratio_threshold: recommendedRatio,
-                        voicing_threshold: recommendedVoicing
-                      }
-                    };
-                    setSettings(finalSettings);
-                    settingsService.saveSettings(finalSettings).then(() => {
-                      console.log("Wizard successfully saved settings to Firestore.");
-                    }).catch(e => {
-                      console.error("Wizard failed to save settings to Firestore:", e);
-                    });
+          setCalibStatus({
+            active: true,
+            type: "voice_complete",
+            countdown: 0,
+            text: `Stem periodiciteit succesvol gemeten! Aanbevolen drempel: ${recommendedVoicing.toFixed(2)}`
+          });
+        }
 
-                    // Save the ambient results to running noise floor refs directly
-                    lowNoiseFloorRef.current = ambientResults.low;
-                    highNoiseFloorRef.current = ambientResults.high;
-
-                    setCalibPhase("complete");
-                    setCalibStatusText(`Kalibratie voltooid! Stilteregistratie: ${recommendedSilence.toFixed(4)}, Fluisterverhouding: ${recommendedRatio.toFixed(2)}`);
-                  }
-                }, 1000);
-                calibIntervalsRef.current.push(whisperMeasureTimer);
-              }
-            }, 1000);
-            calibIntervalsRef.current.push(whisperTimer);
-          }
-        }, 1000);
-        calibIntervalsRef.current.push(measureTimer);
+        // Save immediately to Firestore
+        setSettings(updatedSettings);
+        settingsService.saveSettings(updatedSettings).then(() => {
+          console.log(`Successfully saved ${type} calibration to Firestore.`);
+        }).catch(err => {
+          console.error("Failed to save manual calibration:", err);
+        });
       }
     }, 1000);
+
     calibIntervalsRef.current.push(timer);
   };
 
@@ -531,7 +531,7 @@ const AdminPanel = ({ onClose }) => {
 
   const stopLiveMonitor = () => {
     clearAllCalibIntervals();
-    setCalibUiPhase("idle");
+    setCalibStatus({ active: false, type: "", countdown: 0, text: "" });
     calibPhaseRef.current = "idle";
     if (liveAnimFrameRef.current) cancelAnimationFrame(liveAnimFrameRef.current);
     if (liveStreamRef.current) {
@@ -1195,7 +1195,7 @@ const AdminPanel = ({ onClose }) => {
                   <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "1.5rem", margin: 0 }}>Microfoon & Volume Kalibratie</h3>
                 </div>
 
-                {/* State Machine: Auto-Calibration Wizard */}
+                {/* State Machine: Manual Calibration Buttons */}
                 <div style={{
                   padding: "24px",
                   background: "linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(6, 182, 212, 0.08) 100%)",
@@ -1209,109 +1209,129 @@ const AdminPanel = ({ onClose }) => {
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                     <Sliders color="#6366f1" size={24} />
                     <div>
-                      <h4 style={{ margin: 0, fontSize: "1.05rem", fontWeight: "600" }}>Smarte Auto-Kalibratie Wizard</h4>
-                      <p style={{ margin: 0, fontSize: "0.75rem", color: "#aaaaaa" }}>Laat het systeem automatisch de perfecte drempelwaardes voor jouw kamer en stem berekenen.</p>
+                      <h4 style={{ margin: 0, fontSize: "1.05rem", fontWeight: "600" }}>Kalibratie Meet-Hulpmiddelen</h4>
+                      <p style={{ margin: 0, fontSize: "0.75rem", color: "#aaaaaa" }}>Meten en kalibreren per geluidstype voor maximale nauwkeurigheid.</p>
                     </div>
                   </div>
 
-                  {calibUiPhase === "idle" && (
-                    <button 
-                      type="button"
-                      onClick={handleStartAutoCalib}
-                      style={{
-                        alignSelf: "flex-start",
-                        padding: "10px 20px",
-                        borderRadius: "8px",
-                        backgroundColor: "#6366f1",
-                        color: "#fff",
-                        border: "none",
-                        fontWeight: "bold",
-                        fontSize: "0.85rem",
-                        cursor: "pointer",
-                        transition: "all 0.2s ease",
-                        boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)"
-                      }}
-                      onMouseEnter={(e) => {
-                        e.target.style.transform = "translateY(-1px)";
-                        e.target.style.boxShadow = "0 6px 16px rgba(99, 102, 241, 0.45)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.transform = "none";
-                        e.target.style.boxShadow = "0 4px 12px rgba(99, 102, 241, 0.3)";
-                      }}
-                    >
-                      Start Auto-Kalibratie
-                    </button>
-                  )}
-
-                  {calibUiPhase !== "idle" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "#a5e7fd" }}>
-                          {calibStatusText}
+                  {/* Calibration Status HUD */}
+                  {calibStatus.active && (
+                    <div style={{
+                      padding: "12px 16px",
+                      backgroundColor: "rgba(255, 255, 255, 0.04)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "8px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}>
+                      <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "#a5e7fd" }}>
+                        {calibStatus.text}
+                      </span>
+                      {calibStatus.countdown > 0 ? (
+                        <span style={{ fontSize: "1.2rem", fontWeight: "800", color: "#f43f5e", animation: "pulse 1s infinite" }}>
+                          {calibStatus.countdown}s
                         </span>
-                        {calibCountdown > 0 && (
-                          <span style={{ fontSize: "1.5rem", fontWeight: "800", color: "#f43f5e", animation: "pulse 1s infinite" }}>
-                            {calibCountdown}s
-                          </span>
-                        )}
-                      </div>
-                      
-                      {/* Progress Bar */}
-                      <div style={{ height: "6px", width: "100%", backgroundColor: "rgba(255,255,255,0.06)", borderRadius: "3px", overflow: "hidden" }}>
-                        <div style={{
-                          height: "100%",
-                          width: calibUiPhase === "countdown_ambient" ? "20%" :
-                                 calibUiPhase === "measuring_ambient" ? "40%" :
-                                 calibUiPhase === "countdown_whisper" ? "60%" :
-                                 calibUiPhase === "measuring_whisper" ? "80%" : "100%",
-                          backgroundColor: calibUiPhase === "complete" ? "#10b981" : "#6366f1",
-                          transition: "width 0.4s ease"
-                        }} />
-                      </div>
-
-                      <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-                        {calibUiPhase === "complete" ? (
-                          <button 
-                            type="button"
-                            onClick={() => setCalibPhase("idle")}
-                            style={{
-                              padding: "6px 16px",
-                              borderRadius: "6px",
-                              backgroundColor: "#10b981",
-                              color: "#fff",
-                              border: "none",
-                              fontWeight: "600",
-                              fontSize: "0.8rem",
-                              cursor: "pointer"
-                            }}
-                          >
-                            Klaar
-                          </button>
-                        ) : (
-                          <button 
-                            type="button"
-                            onClick={() => {
-                              clearAllCalibIntervals();
-                              setCalibPhase("idle");
-                            }}
-                            style={{
-                              padding: "6px 14px",
-                              borderRadius: "6px",
-                              backgroundColor: "rgba(239, 68, 68, 0.15)",
-                              color: "#f43f5e",
-                              border: "1px solid rgba(239, 68, 68, 0.25)",
-                              fontWeight: "600",
-                              fontSize: "0.8rem",
-                              cursor: "pointer"
-                            }}
-                          >
-                            Annuleren
-                          </button>
-                        )}
-                      </div>
+                      ) : (
+                        <button 
+                          type="button" 
+                          onClick={() => setCalibStatus({ active: false, type: "", countdown: 0, text: "" })}
+                          style={{
+                            padding: "4px 10px",
+                            fontSize: "0.75rem",
+                            backgroundColor: "#10b981",
+                            border: "none",
+                            borderRadius: "4px",
+                            color: "#fff",
+                            cursor: "pointer",
+                            fontWeight: "bold"
+                          }}
+                        >
+                          Sluiten
+                        </button>
+                      )}
                     </div>
                   )}
+
+                  {/* Three Buttons Grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
+                    
+                    {/* Button 1: Silence */}
+                    <button
+                      type="button"
+                      disabled={calibStatus.active && calibStatus.countdown > 0}
+                      onClick={() => runManualCalib("silence")}
+                      style={{
+                        padding: "12px",
+                        borderRadius: "8px",
+                        backgroundColor: "rgba(148, 163, 184, 0.1)",
+                        border: "1px solid rgba(148, 163, 184, 0.25)",
+                        color: "#e2e8f0",
+                        fontWeight: "600",
+                        fontSize: "0.8rem",
+                        cursor: "pointer",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: "6px",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      <span>🤫 Meet Stilte</span>
+                      <span style={{ fontSize: "0.65rem", color: "#94a3b8", fontWeight: "normal" }}>Achtergrondruis filteren</span>
+                    </button>
+
+                    {/* Button 2: Whisper */}
+                    <button
+                      type="button"
+                      disabled={calibStatus.active && calibStatus.countdown > 0}
+                      onClick={() => runManualCalib("whisper")}
+                      style={{
+                        padding: "12px",
+                        borderRadius: "8px",
+                        backgroundColor: "rgba(16, 185, 129, 0.1)",
+                        border: "1px solid rgba(16, 185, 129, 0.25)",
+                        color: "#34d399",
+                        fontWeight: "600",
+                        fontSize: "0.8rem",
+                        cursor: "pointer",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: "6px",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      <span>💨 Meet Fluistering</span>
+                      <span style={{ fontSize: "0.65rem", color: "#10b981", fontWeight: "normal" }}>Fluister-drempel meten</span>
+                    </button>
+
+                    {/* Button 3: Normal Voice */}
+                    <button
+                      type="button"
+                      disabled={calibStatus.active && calibStatus.countdown > 0}
+                      onClick={() => runManualCalib("voice")}
+                      style={{
+                        padding: "12px",
+                        borderRadius: "8px",
+                        backgroundColor: "rgba(239, 68, 68, 0.1)",
+                        border: "1px solid rgba(239, 68, 68, 0.25)",
+                        color: "#f87171",
+                        fontWeight: "600",
+                        fontSize: "0.8rem",
+                        cursor: "pointer",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: "6px",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      <span>🗣️ Meet Gewone Stem</span>
+                      <span style={{ fontSize: "0.65rem", color: "#f87171", fontWeight: "normal" }}>Praten uitsluiten</span>
+                    </button>
+
+                  </div>
                 </div>
 
                 {/* Status Badge */}

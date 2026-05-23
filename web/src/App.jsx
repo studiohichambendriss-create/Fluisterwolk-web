@@ -12,9 +12,24 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 function getVoicingPeriodicity(timeArray, sampleRate) {
   const n = timeArray.length;
   const samples = new Float32Array(n);
+  
+  // 1. High-Pass Filter (80Hz cutoff) to remove room rumble, fans, and DC offset
+  let prevX = 0;
+  let prevY = 0;
+  const dt = 1 / sampleRate;
+  const rc = 1 / (2 * Math.PI * 80);
+  const alpha = rc / (rc + dt);
+
+  for (let i = 0; i < n; i++) {
+    const x = (timeArray[i] - 128) / 128;
+    samples[i] = alpha * (prevY + x - prevX);
+    prevX = x;
+    prevY = samples[i];
+  }
+
+  // 2. Remove mean
   let mean = 0;
   for (let i = 0; i < n; i++) {
-    samples[i] = (timeArray[i] - 128) / 128;
     mean += samples[i];
   }
   mean /= n;
