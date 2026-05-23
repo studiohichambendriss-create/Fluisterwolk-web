@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { authService, dbService, storageService, settingsService, DEFAULT_SETTINGS, isMockMode } from "../firebase";
+import { authService, dbService, storageService, settingsService, DEFAULT_SETTINGS, isMockMode, checkBadLanguage } from "../firebase";
 import { Lock, Mail, Play, Trash2, ArrowLeft, Download, LogOut, CheckCircle, AlertTriangle, ShieldCheck, Sliders, Type, Database, RefreshCw, Undo2 } from "lucide-react";
 import { saveSandboxClip, loadSandboxClips, deleteSandboxClip } from "../indexedDB";
 
@@ -19,31 +19,6 @@ const hexToRgb = (hex) => {
     parseInt(result[2], 16),
     parseInt(result[3], 16)
   ] : [255, 255, 255];
-};
-
-// Bad Language Dictionary
-const RED_WORDS = ["kanker", "hoer", "kut", "fuck", "bitch", "slet", "tering", "tyfus"];
-const ORANGE_WORDS = ["shit", "verdomme", "dom", "stom", "idioot", "lul", "sukkel"];
-
-const checkBadLanguage = (text) => {
-  if (!text) return "none";
-  const lowerText = text.toLowerCase();
-  
-  // Check red words (highly likely misuse)
-  for (const word of RED_WORDS) {
-    if (lowerText.includes(word)) {
-      return "red";
-    }
-  }
-  
-  // Check orange words (potential misuse)
-  for (const word of ORANGE_WORDS) {
-    if (lowerText.includes(word)) {
-      return "orange";
-    }
-  }
-  
-  return "none";
 };
 
 function getVoicingPeriodicity(timeArray, sampleRate) {

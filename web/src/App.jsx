@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import AdminPanel from "./components/AdminPanel";
-import { dbService, storageService, settingsService, DEFAULT_SETTINGS } from "./firebase";
+import { authService, dbService, storageService, settingsService, DEFAULT_SETTINGS, checkBadLanguage } from "./firebase";
 import { Shield, AlertTriangle } from "lucide-react";
 import "./App.css";
 
@@ -384,11 +384,18 @@ function App() {
     if (whispers.length === 0 || stateRef.current !== "IDLE" || showAdmin) return;
 
     try {
-      const maxHistory = Math.min(Math.max(3, Math.floor(whispers.length * 0.4)), Math.max(0, whispers.length - 1));
+      let safeWhispers = whispers.filter(w => {
+        if (w.isSafe) return true;
+        return checkBadLanguage(w.transcription) === "none";
+      });
+
+      if (safeWhispers.length === 0) return;
+
+      const maxHistory = Math.min(Math.max(3, Math.floor(safeWhispers.length * 0.4)), Math.max(0, safeWhispers.length - 1));
       
-      let availableWhispers = whispers.filter(w => !recentPlayedIdsRef.current.includes(w.id));
+      let availableWhispers = safeWhispers.filter(w => !recentPlayedIdsRef.current.includes(w.id));
       if (availableWhispers.length === 0) {
-        availableWhispers = whispers;
+        availableWhispers = safeWhispers;
         recentPlayedIdsRef.current = [];
       }
 

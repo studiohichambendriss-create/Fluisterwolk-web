@@ -3,6 +3,32 @@ import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc, s
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "firebase/auth";
 
+// Bad Language Dictionary (Multi-language: Dutch, English, Turkish, Arabic slang, Polish, Spanish, etc)
+const RED_WORDS = [
+  "kanker", "hoer", "kut", "fuck", "bitch", "slet", "tering", "tyfus", "mongool", "nigger", "nigga",
+  "kurwa", "puta", "kahba", "zemmer", "sharmuta", "suka", "bylat", "cunt", "whore", "slut", "faggot", 
+  "fag", "chink", "spic", "pussy", "dick", "cock", "penis", "vagina", "porno", "sletje", "snol",
+  "kkr", "nazi", "hitler", "kankerlijder", "klootzak", "motherfucker", "bastard"
+];
+const ORANGE_WORDS = [
+  "shit", "verdomme", "dom", "stom", "idioot", "lul", "sukkel", "ass", "asshole", "bitchy", "crap",
+  "damn", "goddamn", "bullshit", "jezus", "godverdomme", "debiel", "achterlijk"
+];
+
+export const checkBadLanguage = (text) => {
+  if (!text) return "none";
+  const lowerText = text.toLowerCase();
+  
+  // Use regex word boundaries if possible, but basic includes works for fragments like "kkr"
+  for (const word of RED_WORDS) {
+    if (lowerText.includes(word)) return "red";
+  }
+  for (const word of ORANGE_WORDS) {
+    if (lowerText.includes(word)) return "orange";
+  }
+  return "none";
+};
+
 // DEFAULT CONFIG
 const defaultFirebaseConfig = {
   apiKey: "AIzaSyACL17XUx2MIgGh5qjfoaRy8iCRYByR4ak",
