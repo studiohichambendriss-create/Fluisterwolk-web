@@ -2306,6 +2306,7 @@ const AdminPanel = ({ onClose }) => {
                             whisper_ratio_threshold: parseFloat(e.target.value)
                           }
                         }))}
+                        onPointerUp={() => settingsService.saveSettings(settings)}
                         style={{ cursor: "pointer", width: "100%", margin: 0 }}
                       />
                       {/* Real-time Indicator Line */}
@@ -2345,6 +2346,7 @@ const AdminPanel = ({ onClose }) => {
                             voicing_threshold: parseFloat(e.target.value)
                           }
                         }))}
+                        onPointerUp={() => settingsService.saveSettings(settings)}
                         style={{ cursor: "pointer", width: "100%", margin: 0 }}
                       />
                       {/* Real-time Indicator Line */}
@@ -2397,7 +2399,7 @@ const AdminPanel = ({ onClose }) => {
                       <input 
                         type="range" 
                         min="0.001" 
-                        max="0.030" 
+                        max="0.050" 
                         step="0.001"
                         value={settings.calibration?.silence_threshold || 0.005}
                         onChange={(e) => setSettings(prev => ({
@@ -2407,6 +2409,7 @@ const AdminPanel = ({ onClose }) => {
                             silence_threshold: parseFloat(e.target.value)
                           }
                         }))}
+                        onPointerUp={() => settingsService.saveSettings(settings)}
                         style={{ cursor: "pointer", width: "100%", margin: 0 }}
                       />
                       {/* Real-time Indicator Line */}
