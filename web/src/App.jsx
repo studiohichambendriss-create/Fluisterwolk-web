@@ -768,8 +768,8 @@ function App() {
     console.log(
       "Smart Audio Processing. Avg RMS:", avgRms.toFixed(5), 
       "Silence Threshold:", SILENCE_THRESHOLD, 
-      "Noise Floor Low:", lowNoiseFloor.toFixed(2),
-      "Noise Floor High:", highNoiseFloor.toFixed(2),
+      "Noise Floor Low:", fixedNoiseFloor.toFixed(2),
+      "Noise Floor High:", fixedNoiseFloor.toFixed(2),
       "Avg Active Ratio:", avgActiveRatio.toFixed(3), 
       "Ratio Threshold:", WHISPER_RATIO_THRESHOLD, 
       "Avg Voicing:", avgVoicing.toFixed(3),
