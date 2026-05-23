@@ -456,15 +456,15 @@ function App() {
     playingBackgroundAudiosRef.current = [];
   };
 
-  // 3. Audio Confirmation Loop playback (loops seamlessly)
+  // 3. Audio Confirmation Loop playback (with 1 sec pause)
   const startConfirmationLoop = (url) => {
     stopConfirmationLoop();
     
     const audio = new Audio(url);
     audio.volume = 0.85;
-    audio.loop = true;
+    audio.loop = false;
     
-    confirmationLoopRef.current = { intervalId: null, audio: audio };
+    confirmationLoopRef.current = { timeoutId: null, audio: audio };
 
     const play = () => {
       if (stateRef.current !== "CONFIRMATION") {
@@ -474,13 +474,20 @@ function App() {
       audio.play().catch(e => console.log("Confirm loop play blocked:", e));
     };
 
+    audio.onended = () => {
+      if (stateRef.current !== "CONFIRMATION") return;
+      confirmationLoopRef.current.timeoutId = setTimeout(() => {
+        play();
+      }, 1000);
+    };
+
     play();
   };
 
   const stopConfirmationLoop = () => {
     if (confirmationLoopRef.current) {
-      if (confirmationLoopRef.current.intervalId) {
-        clearInterval(confirmationLoopRef.current.intervalId);
+      if (confirmationLoopRef.current.timeoutId) {
+        clearTimeout(confirmationLoopRef.current.timeoutId);
       }
       if (confirmationLoopRef.current.audio) {
         try {
