@@ -535,7 +535,12 @@ const AdminPanel = ({ onClose }) => {
               if (f.rms >= silence) {
                 activeRmsSum += f.rms;
                 activeVoicingSum += f.voicing;
-                activeRatioSum += f.ratio;
+                
+                // Recalculate ratio exactly how App.jsx does it using a fixed noise floor
+                const lowSignal = Math.max(0.01, (f.lowAvg || 0) - 5.0);
+                const highSignal = Math.max(0.01, (f.highAvg || 0) - 5.0);
+                activeRatioSum += highSignal / lowSignal;
+                
                 activeCount++;
               }
             }

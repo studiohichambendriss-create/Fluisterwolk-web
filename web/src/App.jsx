@@ -733,15 +733,10 @@ function App() {
       ? parseFloat(settings.calibration.voicing_threshold)
       : 0.30;
 
-    // 1. Identify noise floor from the quietest 20% of frames
-    const frames = rmsList.map((rms, idx) => ({ rms, idx })).sort((a, b) => a.rms - b.rms);
-    const noiseFrameCount = Math.max(1, Math.floor(frames.length * 0.2));
-    const noiseIndices = frames.slice(0, noiseFrameCount).map(f => f.idx);
-    
-    const lowNoiseFloor = noiseIndices.reduce((sum, idx) => sum + (lowAvgs[idx] || 0), 0) / noiseFrameCount;
-    const highNoiseFloor = noiseIndices.reduce((sum, idx) => sum + (highAvgs[idx] || 0), 0) / noiseFrameCount;
+    // Use a fixed minimal baseline for noise floor to prevent self-canceling whispers
+    const fixedNoiseFloor = 5.0;
 
-    // 2. Process active frames
+    // Process active frames
     let activeRmsSum = 0;
     let activeVoicingSum = 0;
     let activeRatioSum = 0;
@@ -753,8 +748,8 @@ function App() {
         activeRmsSum += rms;
         activeVoicingSum += voicingsList[i] || 0;
 
-        const lowSignal = Math.max(0.01, (lowAvgs[i] || 0) - lowNoiseFloor);
-        const highSignal = Math.max(0.01, (highAvgs[i] || 0) - highNoiseFloor);
+        const lowSignal = Math.max(0.01, (lowAvgs[i] || 0) - fixedNoiseFloor);
+        const highSignal = Math.max(0.01, (highAvgs[i] || 0) - fixedNoiseFloor);
         const activeRatio = highSignal / lowSignal;
         activeRatioSum += activeRatio;
         
